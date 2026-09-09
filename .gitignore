@@ -1,0 +1,15 @@
+# Rust build output
+/target/
+**/*.rs.bk
+*.pdb
+
+# Editor/OS files
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Generated files
+cleaner_settings.json
+cleaner_history.log
