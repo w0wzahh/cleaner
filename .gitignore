@@ -13,3 +13,8 @@ Thumbs.db
 # Generated files
 cleaner_settings.json
 cleaner_history.log
+
+# Release archives
+*.zip
+*.tar.gz
+*.7z
