@@ -1,8 +1,9 @@
 use eframe::egui;
 use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::io::{Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -15,7 +16,7 @@ use walkdir::WalkDir;
 use sysinfo::Disks;
 
 // -----------------------------------------------------------------------------
-// Embedded changelog (always available)
+// Embedded changelog
 // -----------------------------------------------------------------------------
 const CHANGELOG: &str = r#"
 # Changelog
@@ -25,66 +26,251 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2025-02-01
+### Added
+- Five selectable themes: Dark, Light, Nord, Dracula, Solarized.
+- Animated theme transitions (0.35s ease-out interpolation).
+- Empty Folder cleaner tab (bottom-up cascade detection).
+- Secure Delete option (3-pass overwrite with random data before removal).
+- "Export Report" button on Custom, Duplicates, Large Files, and Empty Folders tabs.
+- Procedurally-generated app icon (sparkle on gradient circle).
+### Changed
+- Theme selector now lives in the top toolbar as a ComboBox.
+- Settings schema updated (auto-resets on incompatible load).
+- Centralized confirmation dialog via a `ConfirmAction` enum.
+### Fixed
+- Version string now consistently reflects Cargo.toml.
+
 ## [2.3.0] - 2025-01-25
 ### Added
-- "Check for Updates" button in About tab (opens GitHub releases page)
-- Unhinged comments everywhere – you're welcome.
+- "Check for Updates" button in About tab (opens GitHub releases page).
+- Unhinged comments everywhere.
 ### Changed
-- Version bumped to 2.3.0 (for real this time).
-### Fixed
-- Compilation output now matches actual version.
+- Version bumped to 2.3.0.
 
 ## [2.2.0] - 2025-01-20
 ### Added
-- Spinner animation in status bar during operations.
-- Two-stage duplicate scanning: quick hash first, full hash only when necessary.
+- Spinner animation in status bar.
+- Two-stage duplicate scanning.
 ### Changed
 - Version bumped to 2.2.0.
-- Removed unused field `age_days` from MatchedFile.
-- Improved performance of duplicate finder significantly.
-### Fixed
-- Compiler warnings (unused mut, dead code).
 
 ## [2.1.0] - 2025-01-15
 ### Added
-- Storage Overview tab: shows disk usage per drive using sysinfo.
-- Changelog tab: displays this embedded changelog.
-- GitHub link field in Settings and About tab, openable in browser.
-- Persistent history log: every action is appended to a log file (`cleaner_history.log` by default).
-- Duplicate scanning now shows progress and is not stuck at 0%.
-- New `open` crate dependency to open URLs.
-### Changed
-- Version bumped to 2.1.0.
-- Improved UI: added more tabs, better spacing, and clearer sections.
-- Duplicate scanning now sends progress updates during the hashing phase.
-### Fixed
-- Fixed duplicate scanning being stuck at 0% progress.
-- Fixed unused variable warning in `poll_messages`.
+- Storage Overview tab.
+- Changelog tab.
+- GitHub link in About.
+- Persistent history log.
 
 ## [2.0.0] - 2025-01-10
 ### Added
-- Initial release of Cleaner with Dashboard, Custom Clean, Duplicates, Large Files, System Cleaner, and About tabs.
-- Safe deletion to recycle bin (optional).
-- Dry run mode and confirmation dialogs.
-- Dark/light theme.
-- Configuration persistence.
-### Changed
-- Complete rewrite of the previous simple file cleaner into a full-featured GUI application.
-### Removed
-- None (initial release).
+- Initial release with full GUI.
 "#;
 
 // -----------------------------------------------------------------------------
-// Settings (now includes GitHub URL and log file path)
+// Theme system
+// -----------------------------------------------------------------------------
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+enum Theme {
+    Dark,
+    Light,
+    Nord,
+    Dracula,
+    Solarized,
+}
+
+impl Default for Theme {
+    fn default() -> Self {
+    Theme::Dark
+    }
+}
+
+impl Theme {
+    fn label(&self) -> &'static str {
+        match self {
+            Theme::Dark => "Dark",
+            Theme::Light => "Light",
+            Theme::Nord => "Nord",
+            Theme::Dracula => "Dracula",
+            Theme::Solarized => "Solarized",
+        }
+    }
+
+    fn all() -> &'static [Theme] {
+        &[Theme::Dark, Theme::Light, Theme::Nord, Theme::Dracula, Theme::Solarized]
+    }
+
+    fn visuals(&self) -> egui::Visuals {
+        match self {
+            Theme::Dark => egui::Visuals::dark(),
+            Theme::Light => egui::Visuals::light(),
+            Theme::Nord => {
+                let mut v = egui::Visuals::dark();
+                v.panel_fill = egui::Color32::from_rgb(0x2E, 0x34, 0x40);
+                v.window_fill = egui::Color32::from_rgb(0x3B, 0x42, 0x52);
+                v.extreme_bg_color = egui::Color32::from_rgb(0x27, 0x2C, 0x36);
+                v.faint_bg_color = egui::Color32::from_rgb(0x3B, 0x42, 0x52);
+                v.override_text_color = Some(egui::Color32::from_rgb(0xD8, 0xDE, 0xE9));
+                v
+            }
+            Theme::Dracula => {
+                let mut v = egui::Visuals::dark();
+                v.panel_fill = egui::Color32::from_rgb(0x28, 0x2A, 0x36);
+                v.window_fill = egui::Color32::from_rgb(0x28, 0x2A, 0x36);
+                v.extreme_bg_color = egui::Color32::from_rgb(0x1E, 0x1F, 0x28);
+                v.faint_bg_color = egui::Color32::from_rgb(0x34, 0x36, 0x46);
+                v.override_text_color = Some(egui::Color32::from_rgb(0xF8, 0xF8, 0xF2));
+                v
+            }
+            Theme::Solarized => {
+                let mut v = egui::Visuals::dark();
+                v.panel_fill = egui::Color32::from_rgb(0x00, 0x2B, 0x36);
+                v.window_fill = egui::Color32::from_rgb(0x07, 0x36, 0x42);
+                v.extreme_bg_color = egui::Color32::from_rgb(0x00, 0x1F, 0x28);
+                v.faint_bg_color = egui::Color32::from_rgb(0x07, 0x36, 0x42);
+                v.override_text_color = Some(egui::Color32::from_rgb(0x93, 0xA1, 0xA1));
+                v
+            }
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Theme animation
+// -----------------------------------------------------------------------------
+struct ThemeAnim {
+    from: egui::Visuals,
+    to: egui::Visuals,
+    start: f64,
+    duration: f64,
+    active: bool,
+}
+
+impl ThemeAnim {
+    fn new(initial: egui::Visuals) -> Self {
+        Self {
+            from: initial.clone(),
+            to: initial,
+            start: 0.0,
+            duration: 0.35,
+            active: false,
+        }
+    }
+    fn start(&mut self, from: egui::Visuals, to: egui::Visuals, now: f64) {
+        self.from = from;
+        self.to = to;
+        self.start = now;
+        self.active = true;
+    }
+}
+
+fn ease_out_cubic(t: f32) -> f32 {
+    1.0 - (1.0 - t).powi(3)
+}
+
+fn lerp_color(a: egui::Color32, b: egui::Color32, t: f32) -> egui::Color32 {
+    let r = a.r() as f32 + (b.r() as f32 - a.r() as f32) * t;
+    let g = a.g() as f32 + (b.g() as f32 - a.g() as f32) * t;
+    let bl = a.b() as f32 + (b.b() as f32 - a.b() as f32) * t;
+    let al = a.a() as f32 + (b.a() as f32 - a.a() as f32) * t;
+    egui::Color32::from_rgba_unmultiplied(r.clamp(0.0, 255.0) as u8,
+                                          g.clamp(0.0, 255.0) as u8,
+                                          bl.clamp(0.0, 255.0) as u8,
+                                          al.clamp(0.0, 255.0) as u8)
+}
+
+fn lerp_visuals(a: &egui::Visuals, b: &egui::Visuals, t: f32) -> egui::Visuals {
+    let mut v = b.clone();
+    v.panel_fill = lerp_color(a.panel_fill, b.panel_fill, t);
+    v.window_fill = lerp_color(a.window_fill, b.window_fill, t);
+    v.extreme_bg_color = lerp_color(a.extreme_bg_color, b.extreme_bg_color, t);
+    v.faint_bg_color = lerp_color(a.faint_bg_color, b.faint_bg_color, t);
+    v.override_text_color = match (a.override_text_color, b.override_text_color) {
+        (Some(ca), Some(cb)) => Some(lerp_color(ca, cb, t)),
+        (None, None) => None,
+        (Some(ca), None) => Some(egui::Color32::from_rgba_unmultiplied(
+            ca.r(), ca.g(), ca.b(), ((1.0 - t) * 255.0) as u8)),
+        (None, Some(cb)) => Some(egui::Color32::from_rgba_unmultiplied(
+            cb.r(), cb.g(), cb.b(), (t * 255.0) as u8)),
+    };
+    v
+}
+
+// -----------------------------------------------------------------------------
+// App icon (procedurally generated)
+// -----------------------------------------------------------------------------
+fn generate_icon() -> egui::IconData {
+    let size: u32 = 128;
+    let s = size as f32;
+    let cx = s / 2.0;
+    let cy = s / 2.0;
+    let r_outer = s / 2.0 - 2.0;
+    let mut rgba = vec![0u8; (size * size * 4) as usize];
+
+    for y in 0..size {
+        for x in 0..size {
+            let dx = x as f32 - cx + 0.5;
+            let dy = y as f32 - cy + 0.5;
+            let dist = (dx * dx + dy * dy).sqrt();
+            let idx = ((y * size + x) * 4) as usize;
+
+            if dist > r_outer + 1.5 { continue; }
+
+            let t = (dist / r_outer).clamp(0.0, 1.0);
+            let bg_r = (18.0 + 30.0 * t) as u8;
+            let bg_g = (30.0 + 80.0 * t) as u8;
+            let bg_b = (60.0 + 130.0 * t) as u8;
+
+            let glow = (1.0 - t).clamp(0.0, 1.0);
+            let glow_strength = glow * glow * 0.35;
+
+            let ax = dx.abs();
+            let ay = dy.abs();
+            let star_w = 6.5;
+            let star_len = 46.0;
+            let in_star = (ax < star_w && ay < star_len) || (ay < star_w && ax < star_len);
+            let in_center = (ax + ay) < 14.0;
+
+            let mut r = (bg_r as f32 * (1.0 - glow_strength) + 120.0 * glow_strength) as u8;
+            let mut g = (bg_g as f32 * (1.0 - glow_strength) + 200.0 * glow_strength) as u8;
+            let mut b = (bg_b as f32 * (1.0 - glow_strength) + 255.0 * glow_strength) as u8;
+
+            if in_star || in_center {
+                let brightness = 1.0 - (dist / r_outer).powi(2) * 0.55;
+                let brightness = brightness.clamp(0.0, 1.0);
+                r = (255.0 * brightness + 120.0 * (1.0 - brightness)) as u8;
+                g = (255.0 * brightness + 220.0 * (1.0 - brightness)) as u8;
+                b = (255.0 * brightness + 255.0 * (1.0 - brightness)) as u8;
+            }
+
+            let alpha = if dist > r_outer - 1.5 {
+                ((r_outer - dist) / 1.5 * 255.0).clamp(0.0, 255.0) as u8
+            } else { 255 };
+
+            rgba[idx] = r;
+            rgba[idx + 1] = g;
+            rgba[idx + 2] = b;
+            rgba[idx + 3] = alpha;
+        }
+    }
+
+    egui::IconData { rgba, width: size, height: size }
+}
+
+// -----------------------------------------------------------------------------
+// Settings
 // -----------------------------------------------------------------------------
 #[derive(Serialize, Deserialize, Clone)]
 struct Settings {
-    theme_dark: bool,
+    #[serde(default)]
+    theme: Theme,
     use_trash: bool,
     dry_run: bool,
     recursive: bool,
     include_hidden: bool,
     confirm_clean: bool,
+    #[serde(default)]
+    secure_delete: bool,
     default_dir: String,
     github_url: String,
     log_file: String,
@@ -93,12 +279,13 @@ struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            theme_dark: true,
+            theme: Theme::Dark,
             use_trash: true,
             dry_run: true,
             recursive: false,
             include_hidden: false,
             confirm_clean: true,
+            secure_delete: false,
             default_dir: dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")).display().to_string(),
             github_url: "https://github.com/w0wzahh".to_string(),
             log_file: "cleaner_history.log".to_string(),
@@ -132,13 +319,24 @@ enum Tab {
     Duplicates,
     LargeFiles,
     SystemCleaner,
+    EmptyFolders,
     Storage,
     Changelog,
     About,
 }
 
 // -----------------------------------------------------------------------------
-// Custom Cleaner State
+// Confirmation actions
+// -----------------------------------------------------------------------------
+#[derive(Clone, Copy)]
+enum ConfirmAction {
+    CleanFiles,
+    CleanDuplicates,
+    CleanEmptyFolders,
+}
+
+// -----------------------------------------------------------------------------
+// State structs
 // -----------------------------------------------------------------------------
 struct CustomCleanerState {
     dir_path: String,
@@ -168,9 +366,6 @@ impl Default for CustomCleanerState {
     }
 }
 
-// -----------------------------------------------------------------------------
-// Duplicate Finder State
-// -----------------------------------------------------------------------------
 #[derive(Clone)]
 struct DuplicateGroup {
     hash: String,
@@ -196,9 +391,6 @@ impl Default for DuplicateState {
     }
 }
 
-// -----------------------------------------------------------------------------
-// Large Files State
-// -----------------------------------------------------------------------------
 struct LargeFile {
     path: PathBuf,
     size: u64,
@@ -222,9 +414,6 @@ impl Default for LargeFilesState {
     }
 }
 
-// -----------------------------------------------------------------------------
-// System Cleaner State
-// -----------------------------------------------------------------------------
 #[derive(Clone)]
 struct SystemCleanTarget {
     name: String,
@@ -243,7 +432,6 @@ impl Default for SystemCleanerState {
     fn default() -> Self {
         let mut targets = Vec::new();
 
-        // User Cache – the place where apps stash their garbage
         if let Some(dir) = dirs::cache_dir() {
             targets.push(SystemCleanTarget {
                 name: "User Cache".to_string(),
@@ -252,7 +440,6 @@ impl Default for SystemCleanerState {
                 enabled: true,
             });
         }
-        // Local App Data Temp – the digital dumpster behind the strip mall
         if let Some(dir) = dirs::data_local_dir() {
             targets.push(SystemCleanTarget {
                 name: "Local App Data Temp".to_string(),
@@ -261,7 +448,6 @@ impl Default for SystemCleanerState {
                 enabled: true,
             });
         }
-        // App Data Temp – sometimes programs forget to clean their room
         if let Some(dir) = dirs::data_dir() {
             targets.push(SystemCleanTarget {
                 name: "App Data Temp".to_string(),
@@ -270,7 +456,6 @@ impl Default for SystemCleanerState {
                 enabled: false,
             });
         }
-        // Windows Temp – the place where Windows puts things it doesn't want to talk about
         if let Ok(temp) = std::env::var("TEMP") {
             targets.push(SystemCleanTarget {
                 name: "System Temp".to_string(),
@@ -279,7 +464,6 @@ impl Default for SystemCleanerState {
                 enabled: true,
             });
         }
-        // Browser caches – where your web history goes to die
         if let Some(home) = dirs::home_dir() {
             targets.push(SystemCleanTarget {
                 name: "Chrome Cache".to_string(),
@@ -315,9 +499,20 @@ impl Default for SystemCleanerState {
     }
 }
 
-// -----------------------------------------------------------------------------
-// Matched File (generic)
-// -----------------------------------------------------------------------------
+struct EmptyFoldersState {
+    dir_path: String,
+    folders: Vec<PathBuf>,
+}
+
+impl Default for EmptyFoldersState {
+    fn default() -> Self {
+        Self {
+            dir_path: Settings::default().default_dir,
+            folders: Vec::new(),
+        }
+    }
+}
+
 #[derive(Clone)]
 struct MatchedFile {
     path: PathBuf,
@@ -334,13 +529,14 @@ enum WorkerMessage {
     Duplicates(Vec<DuplicateGroup>),
     LargeFiles(Vec<LargeFile>),
     SystemMatched(Vec<MatchedFile>),
+    EmptyFolders(Vec<PathBuf>),
     Done { summary: String },
     Error(String),
     Cancelled,
 }
 
 // -----------------------------------------------------------------------------
-// Helper functions
+// Helpers
 // -----------------------------------------------------------------------------
 fn file_age_days(path: &Path) -> Option<u64> {
     let metadata = fs::metadata(path).ok()?;
@@ -366,10 +562,8 @@ fn collect_files(dir: &Path, recursive: bool, include_hidden: bool) -> Vec<PathB
                 if recursive && (include_hidden || !is_hidden(&path)) {
                     files.extend(collect_files(&path, recursive, include_hidden));
                 }
-            } else {
-                if include_hidden || !is_hidden(&path) {
-                    files.push(path);
-                }
+            } else if include_hidden || !is_hidden(&path) {
+                files.push(path);
             }
         }
     }
@@ -377,14 +571,10 @@ fn collect_files(dir: &Path, recursive: bool, include_hidden: bool) -> Vec<PathB
 }
 
 fn matches_glob(path: &Path, pattern: &str) -> bool {
-    if pattern.is_empty() {
-        return true;
-    }
+    if pattern.is_empty() { return true; }
     if let Ok(pat) = glob::Pattern::new(pattern) {
         pat.matches_path(path)
-    } else {
-        false
-    }
+    } else { false }
 }
 
 fn is_excluded(path: &Path, exclude_dirs: &[String]) -> bool {
@@ -406,6 +596,78 @@ fn human_size(bytes: u64) -> String {
     } else {
         format!("{:.2} GB", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
     }
+}
+
+// Simple xorshift RNG for shredding (no external crate needed)
+struct SimpleRng(u64);
+impl SimpleRng {
+    fn new(seed: u64) -> Self { Self(seed.max(1)) }
+    fn next_u64(&mut self) -> u64 {
+        let mut x = self.0;
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        self.0 = x;
+        x
+    }
+}
+
+fn shred_file(path: &Path) -> Result<(), String> {
+    let meta = fs::metadata(path).map_err(|e| e.to_string())?;
+    let size = meta.len();
+    if size == 0 {
+        return fs::remove_file(path).map_err(|e| e.to_string());
+    }
+
+    let seed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0xDEADBEEF);
+    let mut rng = SimpleRng::new(seed);
+
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .open(path)
+        .map_err(|e| e.to_string())?;
+
+    let chunk_size: usize = 64 * 1024;
+    let mut buf = vec![0u8; chunk_size];
+
+    for _pass in 0..3 {
+        file.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
+        let mut remaining = size;
+        while remaining > 0 {
+            let n = remaining.min(chunk_size as u64) as usize;
+            for i in 0..n {
+                buf[i] = (rng.next_u64() & 0xFF) as u8;
+            }
+            file.write_all(&buf[..n]).map_err(|e| e.to_string())?;
+            remaining -= n as u64;
+        }
+        file.sync_all().map_err(|e| e.to_string())?;
+    }
+
+    drop(file);
+    fs::remove_file(path).map_err(|e| e.to_string())
+}
+
+fn export_report(files: &[MatchedFile], label: &str) -> Result<PathBuf, String> {
+    let timestamp = Local::now().format("%Y%m%d_%H%M%S");
+    let filename = format!("cleaner_report_{}_{}.txt", label, timestamp);
+    let mut content = String::new();
+    content.push_str("Cleaner Report\n");
+    content.push_str("==============\n");
+    content.push_str(&format!("Generated: {}\n", Local::now().format("%Y-%m-%d %H:%M:%S")));
+    content.push_str(&format!("Type: {}\n", label));
+    content.push_str(&format!("Total files: {}\n", files.len()));
+    let total_size: u64 = files.iter().map(|f| f.size).sum();
+    content.push_str(&format!("Total size: {}\n\n", human_size(total_size)));
+    content.push_str("Files:\n");
+    for f in files {
+        content.push_str(&format!("  {} - {}\n", human_size(f.size), f.path.display()));
+    }
+    fs::write(&filename, content).map_err(|e| e.to_string())?;
+    Ok(PathBuf::from(filename))
 }
 
 // -----------------------------------------------------------------------------
@@ -455,7 +717,7 @@ fn custom_scan_worker(
             return;
         }
         if i % 10 == 0 || i == total - 1 {
-            tx.send(WorkerMessage::Progress((i + 1) as f32 / total as f32)).unwrap();
+            tx.send(WorkerMessage::Progress((i + 1) as f32 / total.max(1) as f32)).unwrap();
         }
         if is_excluded(file, &exclude) { continue; }
         if !exts.is_empty() {
@@ -497,7 +759,6 @@ fn duplicates_worker(
 
     tx.send(WorkerMessage::Log("Scanning for duplicates (optimized)...".to_string())).unwrap();
 
-    // First pass: group by file size
     let mut size_map: HashMap<u64, Vec<PathBuf>> = HashMap::new();
     let mut total_files = 0;
     for entry in WalkDir::new(&dir).follow_links(false) {
@@ -529,19 +790,18 @@ fn duplicates_worker(
             continue;
         }
 
-        // Quick hash (first 8KB) to filter candidates racial profiling bitches
         let mut quick_map: HashMap<String, Vec<PathBuf>> = HashMap::new();
         for file in &files {
             if cancel_flag.load(Ordering::Relaxed) {
                 tx.send(WorkerMessage::Cancelled).unwrap();
                 return;
             }
-            let quick_hash = match fs::read(&file) {
+            let quick_hash = match fs::read(file) {
                 Ok(bytes) => {
                     let len = bytes.len().min(8192);
                     let mut hasher = Sha256::new();
                     hasher.update(&bytes[..len]);
-                    hasher.update(&size.to_le_bytes()); // include size for extra safety
+                    hasher.update(&size.to_le_bytes());
                     format!("{:x}", hasher.finalize())
                 }
                 Err(_) => continue,
@@ -549,7 +809,6 @@ fn duplicates_worker(
             quick_map.entry(quick_hash).or_default().push(file.clone());
         }
 
-        // Full hash only for quick groups with >1 file – now we bring out the full forensics kit
         for (_, quick_files) in quick_map {
             if quick_files.len() < 2 { continue; }
             let mut full_map: HashMap<String, Vec<PathBuf>> = HashMap::new();
@@ -566,11 +825,7 @@ fn duplicates_worker(
             }
             for (hash, full_files) in full_map {
                 if full_files.len() > 1 {
-                    groups.push(DuplicateGroup {
-                        hash,
-                        files: full_files,
-                        size,
-                    });
+                    groups.push(DuplicateGroup { hash, files: full_files, size });
                 }
             }
         }
@@ -618,10 +873,7 @@ fn large_files_worker(
             if path.is_file() {
                 if let Ok(meta) = fs::metadata(path) {
                     if meta.len() > threshold {
-                        large_files.push(LargeFile {
-                            path: path.to_path_buf(),
-                            size: meta.len(),
-                        });
+                        large_files.push(LargeFile { path: path.to_path_buf(), size: meta.len() });
                     }
                 }
             }
@@ -632,7 +884,7 @@ fn large_files_worker(
     let total_size: u64 = large_files.iter().map(|f| f.size).sum();
     tx.send(WorkerMessage::Log(format!("Found {} large files, total {}", large_files.len(), human_size(total_size)))).unwrap();
     tx.send(WorkerMessage::LargeFiles(large_files)).unwrap();
-    tx.send(WorkerMessage::Done { summary: format!("Large file scan complete.") }).unwrap();
+    tx.send(WorkerMessage::Done { summary: "Large file scan complete.".to_string() }).unwrap();
 }
 
 fn system_scan_worker(
@@ -663,13 +915,72 @@ fn system_scan_worker(
     let total_size: u64 = matched.iter().map(|f| f.size).sum();
     tx.send(WorkerMessage::Log(format!("System scan found {} files, total {}", matched.len(), human_size(total_size)))).unwrap();
     tx.send(WorkerMessage::SystemMatched(matched)).unwrap();
-    tx.send(WorkerMessage::Done { summary: format!("System scan complete.") }).unwrap();
+    tx.send(WorkerMessage::Done { summary: "System scan complete.".to_string() }).unwrap();
+}
+
+fn empty_folders_worker(
+    dir_path: String,
+    cancel_flag: Arc<AtomicBool>,
+    tx: mpsc::Sender<WorkerMessage>,
+) {
+    let dir = PathBuf::from(&dir_path);
+    if !dir.exists() || !dir.is_dir() {
+        tx.send(WorkerMessage::Error(format!("Invalid directory: {}", dir.display()))).unwrap();
+        return;
+    }
+
+    tx.send(WorkerMessage::Log("Scanning for empty folders...".to_string())).unwrap();
+
+    let mut all_dirs: Vec<PathBuf> = Vec::new();
+    for entry in WalkDir::new(&dir).follow_links(false).into_iter().filter_map(|e| e.ok()) {
+        if cancel_flag.load(Ordering::Relaxed) {
+            tx.send(WorkerMessage::Cancelled).unwrap();
+            return;
+        }
+        if entry.file_type().is_dir() {
+            all_dirs.push(entry.path().to_path_buf());
+        }
+    }
+
+    // Sort deepest first so children are processed before parents
+    all_dirs.sort_by_key(|p| std::cmp::Reverse(p.components().count()));
+
+    let mut empty_set: HashSet<PathBuf> = HashSet::new();
+    // Single bottom-up pass is sufficient with deepest-first sort
+    for d in &all_dirs {
+        if cancel_flag.load(Ordering::Relaxed) {
+            tx.send(WorkerMessage::Cancelled).unwrap();
+            return;
+        }
+        if d == &dir { continue; }
+        if let Ok(rd) = fs::read_dir(d) {
+            let mut has_content = false;
+            for entry in rd.flatten() {
+                let p = entry.path();
+                if p.is_dir() {
+                    if !empty_set.contains(&p) { has_content = true; break; }
+                } else {
+                    has_content = true; break;
+                }
+            }
+            if !has_content {
+                empty_set.insert(d.clone());
+            }
+        }
+    }
+
+    let mut empty: Vec<PathBuf> = empty_set.into_iter().collect();
+    empty.sort();
+    tx.send(WorkerMessage::Log(format!("Found {} empty folders", empty.len()))).unwrap();
+    tx.send(WorkerMessage::EmptyFolders(empty)).unwrap();
+    tx.send(WorkerMessage::Done { summary: "Empty folder scan complete.".to_string() }).unwrap();
 }
 
 fn clean_files(
     files: Vec<MatchedFile>,
     use_trash: bool,
     dry_run: bool,
+    secure_delete: bool,
     cancel_flag: Arc<AtomicBool>,
     tx: mpsc::Sender<WorkerMessage>,
 ) {
@@ -683,14 +994,16 @@ fn clean_files(
             tx.send(WorkerMessage::Cancelled).unwrap();
             return;
         }
-        tx.send(WorkerMessage::Progress((i + 1) as f32 / total as f32)).unwrap();
+        tx.send(WorkerMessage::Progress((i + 1) as f32 / total.max(1) as f32)).unwrap();
         if dry_run {
             tx.send(WorkerMessage::Log(format!("[DRY] Would delete: {}", file.path.display()))).unwrap();
             freed += file.size;
             deleted += 1;
             continue;
         }
-        let result: Result<(), String> = if use_trash {
+        let result: Result<(), String> = if secure_delete {
+            shred_file(&file.path)
+        } else if use_trash {
             trash::delete(&file.path).map_err(|e| e.to_string())
         } else {
             fs::remove_file(&file.path).map_err(|e| e.to_string())
@@ -715,6 +1028,40 @@ fn clean_files(
     tx.send(WorkerMessage::Done { summary }).unwrap();
 }
 
+fn clean_folders(
+    folders: Vec<PathBuf>,
+    cancel_flag: Arc<AtomicBool>,
+    tx: mpsc::Sender<WorkerMessage>,
+) {
+    let total = folders.len();
+    let mut deleted = 0;
+    let mut errors = 0;
+
+    let mut sorted = folders;
+    sorted.sort_by_key(|p| std::cmp::Reverse(p.components().count()));
+
+    for (i, folder) in sorted.iter().enumerate() {
+        if cancel_flag.load(Ordering::Relaxed) {
+            tx.send(WorkerMessage::Cancelled).unwrap();
+            return;
+        }
+        tx.send(WorkerMessage::Progress((i + 1) as f32 / total.max(1) as f32)).unwrap();
+        match fs::remove_dir(folder) {
+            Ok(_) => {
+                deleted += 1;
+                tx.send(WorkerMessage::Log(format!("Removed: {}", folder.display()))).unwrap();
+            }
+            Err(e) => {
+                errors += 1;
+                tx.send(WorkerMessage::Log(format!("Error removing {}: {}", folder.display(), e))).unwrap();
+            }
+        }
+    }
+
+    let summary = format!("Removed {} empty folders, {} errors.", deleted, errors);
+    tx.send(WorkerMessage::Done { summary }).unwrap();
+}
+
 // -----------------------------------------------------------------------------
 // Main App
 // -----------------------------------------------------------------------------
@@ -728,12 +1075,16 @@ struct CleanerApp {
     log: Vec<String>,
     rx: Option<mpsc::Receiver<WorkerMessage>>,
     status: String,
-    show_confirm_clean: bool,
+    confirm_action: Option<ConfirmAction>,
+    theme_anim: ThemeAnim,
+    initial_theme_applied: bool,
 
     custom: CustomCleanerState,
     duplicates: DuplicateState,
     large_files: LargeFilesState,
     system: SystemCleanerState,
+    empty_folders: EmptyFoldersState,
+    pending_theme_change: Option<Theme>,
 
     total_files_cleaned: u64,
     total_space_freed: u64,
@@ -742,9 +1093,11 @@ struct CleanerApp {
 
 impl Default for CleanerApp {
     fn default() -> Self {
+        let settings = Settings::load();
+        let initial_visuals = settings.theme.visuals();
         Self {
             tab: Tab::Dashboard,
-            settings: Settings::load(),
+            settings,
             scanning: false,
             cleaning: false,
             cancel_flag: Arc::new(AtomicBool::new(false)),
@@ -752,11 +1105,14 @@ impl Default for CleanerApp {
             log: Vec::new(),
             rx: None,
             status: "Ready".to_string(),
-            show_confirm_clean: false,
+            confirm_action: None,
+            theme_anim: ThemeAnim::new(initial_visuals),
+            initial_theme_applied: false,
             custom: CustomCleanerState::default(),
             duplicates: DuplicateState::default(),
             large_files: LargeFilesState::default(),
             system: SystemCleanerState::default(),
+            empty_folders: EmptyFoldersState::default(),
             total_files_cleaned: 0,
             total_space_freed: 0,
             last_scan_summary: "No scan yet".to_string(),
@@ -777,9 +1133,44 @@ impl CleanerApp {
             .append(true)
             .open(&self.settings.log_file)
         {
-            use std::io::Write;
             let _ = writeln!(file, "{}", line);
         }
+    }
+
+    fn update_theme_animation(&mut self, ctx: &egui::Context) {
+        let now = ctx.input(|i| i.time);
+        if self.theme_anim.active {
+            let t = ((now - self.theme_anim.start) / self.theme_anim.duration)
+                .clamp(0.0, 1.0) as f32;
+            let et = ease_out_cubic(t);
+            let v = lerp_visuals(&self.theme_anim.from, &self.theme_anim.to, et);
+            ctx.set_visuals(v);
+            if t >= 1.0 {
+                self.theme_anim.active = false;
+                ctx.set_visuals(self.theme_anim.to.clone());
+            } else {
+                ctx.request_repaint();
+            }
+        } else {
+            ctx.set_visuals(self.theme_anim.to.clone());
+        }
+    }
+
+    fn change_theme(&mut self, new_theme: Theme, ctx: &egui::Context) {
+        if new_theme == self.settings.theme { return; }
+        let now = ctx.input(|i| i.time);
+        let from = if self.theme_anim.active {
+            let t = ((now - self.theme_anim.start) / self.theme_anim.duration)
+                .clamp(0.0, 1.0) as f32;
+            lerp_visuals(&self.theme_anim.from, &self.theme_anim.to, ease_out_cubic(t))
+        } else {
+            self.theme_anim.to.clone()
+        };
+        let to = new_theme.visuals();
+        self.theme_anim.start(from, to, now);
+        self.settings.theme = new_theme;
+        self.settings.save();
+        self.add_log(&format!("Theme changed to {}", new_theme.label()));
     }
 
     fn start_custom_scan(&mut self) {
@@ -864,6 +1255,23 @@ impl CleanerApp {
         self.status = "Scanning system...".to_string();
     }
 
+    fn start_empty_folders_scan(&mut self) {
+        if self.scanning || self.cleaning { return; }
+        self.settings.save();
+        self.scanning = true;
+        self.progress = 0.0;
+        self.empty_folders.folders.clear();
+        self.log.clear();
+        self.cancel_flag = Arc::new(AtomicBool::new(false));
+        let (tx, rx) = mpsc::channel();
+        let cancel = self.cancel_flag.clone();
+        let dir = self.empty_folders.dir_path.clone();
+        self.add_log("Starting empty folder scan...");
+        thread::spawn(move || empty_folders_worker(dir, cancel, tx));
+        self.rx = Some(rx);
+        self.status = "Scanning for empty folders...".to_string();
+    }
+
     fn start_clean_selected(&mut self) {
         if self.scanning || self.cleaning { return; }
         let files: Vec<MatchedFile> = match self.tab {
@@ -879,8 +1287,9 @@ impl CleanerApp {
         let cancel = self.cancel_flag.clone();
         let use_trash = self.settings.use_trash;
         let dry_run = self.settings.dry_run;
+        let secure_delete = self.settings.secure_delete;
         self.add_log("Starting cleaning...");
-        thread::spawn(move || clean_files(files, use_trash, dry_run, cancel, tx));
+        thread::spawn(move || clean_files(files, use_trash, dry_run, secure_delete, cancel, tx));
         self.rx = Some(rx);
         self.status = "Cleaning...".to_string();
     }
@@ -896,18 +1305,42 @@ impl CleanerApp {
         let cancel = self.cancel_flag.clone();
         let use_trash = self.settings.use_trash;
         let dry_run = self.settings.dry_run;
+        let secure_delete = self.settings.secure_delete;
         let matched: Vec<MatchedFile> = files.into_iter().map(|p| {
             let size = fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
             MatchedFile { path: p, size }
         }).collect();
         self.add_log("Starting duplicate cleanup...");
-        thread::spawn(move || clean_files(matched, use_trash, dry_run, cancel, tx));
+        thread::spawn(move || clean_files(matched, use_trash, dry_run, secure_delete, cancel, tx));
         self.rx = Some(rx);
         self.status = "Cleaning duplicates...".to_string();
     }
 
+    fn start_clean_empty_folders(&mut self) {
+        if self.scanning || self.cleaning { return; }
+        let folders = self.empty_folders.folders.clone();
+        if folders.is_empty() { return; }
+        self.cleaning = true;
+        self.progress = 0.0;
+        self.cancel_flag = Arc::new(AtomicBool::new(false));
+        let (tx, rx) = mpsc::channel();
+        let cancel = self.cancel_flag.clone();
+        self.add_log("Removing empty folders...");
+        thread::spawn(move || clean_folders(folders, cancel, tx));
+        self.rx = Some(rx);
+        self.status = "Removing empty folders...".to_string();
+    }
+
     fn cancel(&self) {
         self.cancel_flag.store(true, Ordering::Relaxed);
+    }
+
+    fn handle_confirm(&mut self, action: ConfirmAction) {
+        match action {
+            ConfirmAction::CleanFiles => self.start_clean_selected(),
+            ConfirmAction::CleanDuplicates => self.start_clean_duplicates(),
+            ConfirmAction::CleanEmptyFolders => self.start_clean_empty_folders(),
+        }
     }
 
     fn poll_messages(&mut self, ctx: &egui::Context) {
@@ -943,6 +1376,9 @@ impl CleanerApp {
                     WorkerMessage::SystemMatched(files) => {
                         self.system.total_matched_size = files.iter().map(|f| f.size).sum();
                         self.system.matched_files = files;
+                    }
+                    WorkerMessage::EmptyFolders(folders) => {
+                        self.empty_folders.folders = folders;
                     }
                     WorkerMessage::Done { summary } => {
                         self.add_log(&summary);
@@ -990,7 +1426,6 @@ impl CleanerApp {
         }
     }
 
-    // Static helper to draw a file list
     fn draw_file_list(ui: &mut egui::Ui, files: &[MatchedFile], id_source: &str) {
         egui::ScrollArea::vertical()
             .id_source(id_source)
@@ -1018,7 +1453,7 @@ impl CleanerApp {
                         format!("{} files, {} each (hash {})",
                             group.files.len(),
                             human_size(group.size),
-                            &group.hash[..8]
+                            &group.hash[..8.min(group.hash.len())]
                         ),
                         |ui| {
                             for (i, file) in group.files.iter().enumerate() {
@@ -1061,12 +1496,14 @@ impl CleanerApp {
         for disk in disks.list() {
             let total = disk.total_space();
             let available = disk.available_space();
-            let used = total - available;
+            let used = total.saturating_sub(available);
             let percent = if total > 0 { (used as f64 / total as f64) * 100.0 } else { 0.0 };
 
             ui.group(|ui| {
                 ui.label(format!("Drive {} ({})", disk.name().to_string_lossy(), disk.mount_point().display()));
-                ui.add(egui::ProgressBar::new((percent / 100.0) as f32).show_percentage().text(format!("{:.0}% used", percent)));
+                ui.add(egui::ProgressBar::new((percent / 100.0) as f32)
+                    .show_percentage()
+                    .text(format!("{:.0}% used", percent)));
                 ui.label(format!("Used: {} / {}", human_size(used), human_size(total)));
                 ui.label(format!("Free: {}", human_size(available)));
             });
@@ -1083,12 +1520,13 @@ impl CleanerApp {
 // -----------------------------------------------------------------------------
 impl eframe::App for CleanerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        ctx.set_visuals(if self.settings.theme_dark {
-            egui::Visuals::dark()
-        } else {
-            egui::Visuals::light()
-        });
+        if !self.initial_theme_applied {
+            ctx.set_visuals(self.settings.theme.visuals());
+            self.theme_anim.to = self.settings.theme.visuals();
+            self.initial_theme_applied = true;
+        }
 
+        self.update_theme_animation(ctx);
         self.poll_messages(ctx);
 
         // Top toolbar
@@ -1102,19 +1540,40 @@ impl eframe::App for CleanerApp {
                 ui.selectable_value(&mut self.tab, Tab::Duplicates, "Duplicates");
                 ui.selectable_value(&mut self.tab, Tab::LargeFiles, "Large Files");
                 ui.selectable_value(&mut self.tab, Tab::SystemCleaner, "System Cleaner");
+                ui.selectable_value(&mut self.tab, Tab::EmptyFolders, "Empty Folders");
                 ui.selectable_value(&mut self.tab, Tab::Storage, "Storage");
                 ui.selectable_value(&mut self.tab, Tab::Changelog, "Changelog");
                 ui.selectable_value(&mut self.tab, Tab::About, "About");
+
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.checkbox(&mut self.settings.theme_dark, "Dark theme");
                     if ui.button("Save settings").clicked() {
                         self.settings.save();
                         self.add_log("Settings saved.");
+                    }
+                    ui.label("Theme:");
+                    let mut new_theme: Option<Theme> = None;
+                    egui::ComboBox::from_id_source("theme_combo")
+                        .selected_text(self.settings.theme.label())
+                        .show_ui(ui, |ui| {
+                            for t in Theme::all() {
+                                if ui.selectable_label(*t == self.settings.theme, t.label()).clicked() {
+                                    new_theme = Some(*t);
+                                }
+                            }
+                        });
+                    if let Some(t) = new_theme {
+                        // Defer theme change to after closure
+                        self.pending_theme_change = Some(t);
                     }
                 });
             });
             ui.add_space(4.0);
         });
+
+        // Apply pending theme change (outside of toolbar borrow)
+        if let Some(t) = self.pending_theme_change.take() {
+            self.change_theme(t, ctx);
+        }
 
         // Bottom status bar
         egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
@@ -1143,6 +1602,7 @@ impl eframe::App for CleanerApp {
                 Tab::Duplicates => self.draw_duplicates(ui),
                 Tab::LargeFiles => self.draw_large_files(ui),
                 Tab::SystemCleaner => self.draw_system_cleaner(ui),
+                Tab::EmptyFolders => self.draw_empty_folders(ui),
                 Tab::Storage => self.draw_storage(ui),
                 Tab::Changelog => self.draw_changelog(ui),
                 Tab::About => self.draw_about(ui),
@@ -1150,22 +1610,32 @@ impl eframe::App for CleanerApp {
         });
 
         // Confirmation dialog
-        if self.show_confirm_clean {
+        if let Some(action) = self.confirm_action {
+            let mut close = false;
+            let mut do_action = false;
             egui::Window::new("Confirm Clean")
                 .collapsible(false)
                 .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
                 .show(ctx, |ui| {
-                    ui.label("Are you sure you want to proceed?");
+                    ui.label(match action {
+                        ConfirmAction::CleanFiles => "Are you sure you want to delete the matched files?",
+                        ConfirmAction::CleanDuplicates => "Are you sure you want to delete the selected duplicates?",
+                        ConfirmAction::CleanEmptyFolders => "Are you sure you want to remove the empty folders?",
+                    });
+                    ui.add_space(8.0);
                     ui.horizontal(|ui| {
                         if ui.button("Yes").clicked() {
-                            self.show_confirm_clean = false;
-                            self.start_clean_selected();
+                            do_action = true;
+                            close = true;
                         }
                         if ui.button("Cancel").clicked() {
-                            self.show_confirm_clean = false;
+                            close = true;
                         }
                     });
                 });
+            if close { self.confirm_action = None; }
+            if do_action { self.handle_confirm(action); }
         }
     }
 }
@@ -1245,9 +1715,15 @@ impl CleanerApp {
             }
             if ui.add_enabled(!self.custom.matched_files.is_empty(), egui::Button::new("Clean Selected")).clicked() {
                 if self.settings.confirm_clean {
-                    self.show_confirm_clean = true;
+                    self.confirm_action = Some(ConfirmAction::CleanFiles);
                 } else {
                     self.start_clean_selected();
+                }
+            }
+            if ui.add_enabled(!self.custom.matched_files.is_empty(), egui::Button::new("Export Report")).clicked() {
+                match export_report(&self.custom.matched_files, "custom") {
+                    Ok(p) => self.status = format!("Report saved: {}", p.display()),
+                    Err(e) => self.status = format!("Export error: {}", e),
                 }
             }
         });
@@ -1283,13 +1759,15 @@ impl CleanerApp {
 
         self.draw_duplicate_groups(ui);
 
-        if ui.button("Clean Selected Duplicates").clicked() {
-            if self.settings.confirm_clean {
-                self.show_confirm_clean = true;
-            } else {
-                self.start_clean_duplicates();
+        ui.horizontal(|ui| {
+            if ui.button("Clean Selected Duplicates").clicked() {
+                if self.settings.confirm_clean {
+                    self.confirm_action = Some(ConfirmAction::CleanDuplicates);
+                } else {
+                    self.start_clean_duplicates();
+                }
             }
-        }
+        });
     }
 
     fn draw_large_files(&mut self, ui: &mut egui::Ui) {
@@ -1351,7 +1829,7 @@ impl CleanerApp {
             }
             if ui.add_enabled(!self.system.matched_files.is_empty(), egui::Button::new("Clean System")).clicked() {
                 if self.settings.confirm_clean {
-                    self.show_confirm_clean = true;
+                    self.confirm_action = Some(ConfirmAction::CleanFiles);
                 } else {
                     self.start_clean_selected();
                 }
@@ -1361,6 +1839,50 @@ impl CleanerApp {
         ui.add_space(8.0);
         ui.label(format!("Matched files: {}", self.system.matched_files.len()));
         Self::draw_file_list(ui, &self.system.matched_files, "system_scroll");
+    }
+
+    fn draw_empty_folders(&mut self, ui: &mut egui::Ui) {
+        ui.add_space(8.0);
+        ui.heading("Empty Folder Cleaner");
+        ui.separator();
+
+        ui.horizontal(|ui| {
+            ui.label("Directory:");
+            ui.text_edit_singleline(&mut self.empty_folders.dir_path);
+            if ui.button("Browse…").clicked() {
+                if let Some(path) = FileDialog::new().pick_folder() {
+                    self.empty_folders.dir_path = path.display().to_string();
+                }
+            }
+        });
+
+        ui.horizontal(|ui| {
+            if ui.button("Scan for Empty Folders").clicked() {
+                self.start_empty_folders_scan();
+            }
+            if ui.add_enabled(!self.empty_folders.folders.is_empty(), egui::Button::new("Remove Empty Folders")).clicked() {
+                if self.settings.confirm_clean {
+                    self.confirm_action = Some(ConfirmAction::CleanEmptyFolders);
+                } else {
+                    self.start_clean_empty_folders();
+                }
+            }
+        });
+
+        ui.add_space(8.0);
+        ui.label(format!("Found {} empty folders (including cascade)", self.empty_folders.folders.len()));
+
+        egui::ScrollArea::vertical()
+            .id_source("empty_folders_scroll")
+            .max_height(ui.available_height() * 0.7)
+            .show(ui, |ui| {
+                for f in &self.empty_folders.folders {
+                    ui.monospace(f.display().to_string());
+                }
+                if self.empty_folders.folders.is_empty() {
+                    ui.label("No empty folders found.");
+                }
+            });
     }
 
     fn draw_changelog(&mut self, ui: &mut egui::Ui) {
@@ -1373,7 +1895,7 @@ impl CleanerApp {
     fn draw_about(&mut self, ui: &mut egui::Ui) {
         ui.add_space(20.0);
         ui.heading("Cleaner");
-        ui.label("Version 2.3.0");
+        ui.label("Version 2.4.0");
         ui.label("A modern, fast, and safe system cleaning utility.");
         ui.add_space(10.0);
         ui.label("Features:");
@@ -1381,10 +1903,12 @@ impl CleanerApp {
         ui.label("• Duplicate file finder (lightning fast)");
         ui.label("• Large file finder");
         ui.label("• System junk cleaner (temp files, caches)");
+        ui.label("• Empty folder cleaner (cascade)");
+        ui.label("• Secure Delete (3-pass shredder)");
+        ui.label("• 5 themes with animated transitions");
         ui.label("• Safe deletion to recycle bin by default");
-        ui.label("• Dark/light theme");
         ui.label("• Storage overview");
-        ui.label("• Detailed changelog");
+        ui.label("• Exportable reports");
         ui.add_space(10.0);
         ui.label("GitHub repository:");
         ui.horizontal(|ui| {
@@ -1396,10 +1920,10 @@ impl CleanerApp {
         ui.add_space(10.0);
         ui.horizontal(|ui| {
             if ui.button("Check for Updates").clicked() {
-                // Open the releases page – user can download the latest version manually
                 let _ = open::that("https://github.com/w0wzahh/cleaner/releases");
             }
         });
+        ui.add_space(10.0);
         ui.label("This application is written in Rust using egui.");
     }
 }
@@ -1408,9 +1932,11 @@ impl CleanerApp {
 // Entry point
 // -----------------------------------------------------------------------------
 fn main() -> Result<(), eframe::Error> {
+    let icon = generate_icon();
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1200.0, 800.0]),
+            .with_inner_size([1200.0, 800.0])
+            .with_icon(Arc::new(icon)),
         ..Default::default()
     };
     eframe::run_native(
