@@ -1077,6 +1077,7 @@ struct CleanerApp {
     status: String,
     confirm_action: Option<ConfirmAction>,
     theme_anim: ThemeAnim,
+    pending_theme_change: Option<Theme>,
     initial_theme_applied: bool,
 
     custom: CustomCleanerState,
@@ -1084,7 +1085,6 @@ struct CleanerApp {
     large_files: LargeFilesState,
     system: SystemCleanerState,
     empty_folders: EmptyFoldersState,
-    pending_theme_change: Option<Theme>,
 
     total_files_cleaned: u64,
     total_space_freed: u64,
@@ -1108,6 +1108,7 @@ impl Default for CleanerApp {
             confirm_action: None,
             theme_anim: ThemeAnim::new(initial_visuals),
             initial_theme_applied: false,
+            pending_theme_change: None,
             custom: CustomCleanerState::default(),
             duplicates: DuplicateState::default(),
             large_files: LargeFilesState::default(),
