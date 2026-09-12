@@ -241,7 +241,7 @@ pub fn lerp_visuals(a: &egui::Visuals, b: &egui::Visuals, t: f32) -> egui::Visua
 }
 
 // -----------------------------------------------------------------------------
-// app icon — embedded artwork, background tinted to match the theme
+// app icon — embedded artwork on a transparent background
 // -----------------------------------------------------------------------------
 
 /// Embedded 256x256 RGBA app artwork (the broom + sparkles design).

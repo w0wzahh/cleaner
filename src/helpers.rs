@@ -114,7 +114,13 @@ pub fn is_excluded(path: &Path, exclude_dirs: &[String]) -> bool {
             continue;
         }
         let ex = norm_path(ex);
-        if norm == ex || norm.starts_with(&format!("{}\\", ex)) {
+        // Exact match, or a proper child boundary — never a sibling like
+        // "C:\KeepOther" matching "C:\Keep".
+        if norm == ex
+            || (norm.len() > ex.len()
+                && norm.starts_with(&ex)
+                && norm.as_bytes()[ex.len()] == b'\\')
+        {
             return true;
         }
     }

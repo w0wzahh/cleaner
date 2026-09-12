@@ -51,6 +51,10 @@ pub struct Settings {
     /// with dry run on it only previews).
     #[serde(default)]
     pub schedule_auto_clean: bool,
+    /// Folder scanned when schedule_target is Custom. Empty falls back to
+    /// the Custom Clean tab's current directory.
+    #[serde(default)]
+    pub schedule_dir: String,
     /// Unix timestamp of the last scheduled run (0 = never).
     #[serde(default)]
     pub schedule_last_run: i64,
@@ -117,6 +121,7 @@ impl Default for Settings {
             schedule_hours: 24,
             schedule_target: ScheduleTarget::System,
             schedule_auto_clean: false,
+            schedule_dir: String::new(),
             schedule_last_run: 0,
             welcomed: false,
             disabled_targets: Vec::new(),

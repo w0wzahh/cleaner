@@ -11,6 +11,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.4] - 2026-09-12
+### Fixed
+- Second audit pass. Highlights: scheduled Custom scans now use their own
+  persisted folder (they used to fall back to scanning the whole home
+  directory after a restart); scheduled scans keep running while the app
+  is in the tray; Folder Sizes honors protected paths; closing mid-clean
+  cancels workers instead of killing them mid-file; CLI exit code reflects
+  worker failures; preset buttons no longer inherit each other's filters.
+
+### Added
+- Folder picker for the scheduled Custom target.
+
 ## [2.9.3] - 2026-09-12
 ### Fixed
 - Full-codebase audit pass. Highlights: the "User Cache" target no longer

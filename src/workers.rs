@@ -442,6 +442,7 @@ pub fn empty_folders_worker(
 /// "which subfolder is eating my disk?".
 pub fn folder_sizes_worker(
     dir_path: String,
+    protected: Vec<String>,
     cancel_flag: Arc<AtomicBool>,
     tx: mpsc::Sender<WorkerMessage>,
 ) {
@@ -460,7 +461,11 @@ pub fn folder_sizes_worker(
     let mut total = 0u64;
     let mut seen = 0usize;
 
-    for entry in WalkDir::new(&dir).follow_links(false) {
+    for entry in WalkDir::new(&dir)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|e| !helpers::is_excluded(e.path(), &protected))
+    {
         if cancel_flag.load(Ordering::Relaxed) {
             let _ = tx.send(WorkerMessage::Cancelled);
             return;

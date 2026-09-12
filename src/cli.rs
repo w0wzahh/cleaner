@@ -115,7 +115,9 @@ fn print_done(msgs: &[WorkerMessage]) -> i32 {
             _ => {}
         }
     }
-    0
+    // No Done and no Error means the worker thread died mid-flight — that
+    // is a failure, not a silent success.
+    1
 }
 
 fn confirm(prompt: &str) -> bool {
@@ -423,8 +425,9 @@ pub fn run(args: &[String]) -> i32 {
                     return 2;
                 }
             };
+            let protected = settings.protected_list();
             let msgs = run_and_collect(move |tx, cancel| {
-                workers::folder_sizes_worker(dir, cancel, tx)
+                workers::folder_sizes_worker(dir, protected, cancel, tx)
             });
             for m in &msgs {
                 if let WorkerMessage::FolderSizes(entries) = m {

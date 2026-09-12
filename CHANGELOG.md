@@ -14,6 +14,36 @@ Things planned for the next release. Nothing here is final yet.
 
 ---
 
+## [2.9.4] — 2026-09-12
+
+Second audit pass — more edge cases found and fixed.
+
+### Fixed
+- Scheduled "Custom folder" scans used the Custom tab's directory, which
+  resets to the home folder on every launch — a scheduled run could scan
+  your entire profile. The scheduler now has its own persisted folder
+  picker, and the Windows task uses it too.
+- Scheduled scans and worker results now keep working while the app is
+  hidden in the tray (the watcher wakes the event loop periodically —
+  a hidden egui window gets no repaint events on its own).
+- Folder Sizes now honors protected paths — the promise is "never
+  scanned", and the size breakdown walked them anyway.
+- Closing the app mid-clean now signals workers to stop instead of
+  killing the thread mid-delete.
+- CLI returned exit code 0 when a worker thread died without finishing.
+- The "Old files (30d+)" preset no longer inherits leftover extension
+  filters from other presets.
+- Large-files confirm dialog no longer says "permanently" when the
+  recycle bin is enabled.
+- Tray Quit falls back to a viewport close if the window handle was
+  never captured; hide-to-tray falls back the same way.
+- Removing a scheduled task that doesn't exist no longer logs an error.
+
+### Added
+- Folder picker for the scheduled Custom target.
+
+---
+
 ## [2.9.3] — 2026-09-12
 
 A full-codebase audit pass. All fixes, no new features.

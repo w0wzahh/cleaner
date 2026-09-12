@@ -770,7 +770,9 @@ impl CleanerApp {
         }
 
         let ctx = ctx.clone();
-        thread::spawn(move || loop {
+        thread::spawn(move || {
+            let mut ticks = 0u32;
+            loop {
             let mut restore = false;
             for event in TrayIconEvent::receiver().try_iter() {
                 if let TrayIconEvent::DoubleClick {
@@ -797,7 +799,15 @@ impl CleanerApp {
                 helpers::show_main_window();
                 ctx.request_repaint();
             }
+            // While the window is hidden, update() gets no repaint events —
+            // nudge it periodically so scheduled scans still fire and worker
+            // results still get processed in the tray.
+            ticks += 1;
+            if ticks % 600 == 0 {
+                ctx.request_repaint();
+            }
             thread::sleep(std::time::Duration::from_millis(50));
+            }
         });
     }
 
@@ -957,6 +967,11 @@ impl CleanerApp {
             crate::settings::ScheduleTarget::Custom => {
                 self.tab = Tab::CustomClean;
                 self.pending_auto_clean = auto.then_some(Tab::CustomClean);
+                // Scheduled custom scans use their own configured folder —
+                // the Custom tab's dir resets to the home folder each launch.
+                if !self.settings.schedule_dir.trim().is_empty() {
+                    self.custom.dir_path = self.settings.schedule_dir.clone();
+                }
                 self.start_custom_scan();
             }
         }
@@ -1116,7 +1131,8 @@ impl CleanerApp {
         let cancel = self.cancel_flag.clone();
         let dir = self.folder_sizes.dir_path.clone();
         self.add_log("Starting folder size analysis...");
-        thread::spawn(move || workers::folder_sizes_worker(dir, cancel, tx));
+        let protected = self.settings.protected_list();
+        thread::spawn(move || workers::folder_sizes_worker(dir, protected, cancel, tx));
         self.rx = Some(rx);
         self.status = "Analyzing folder sizes...".to_string();
         self.status_toast = 0;
@@ -1761,6 +1777,41 @@ impl CleanerApp {
                     self.settings.save();
                 }
             });
+            if self.settings.schedule_target == crate::settings::ScheduleTarget::Custom {
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new("Folder:").weak().small(),
+                    );
+                    let mut d = self.settings.schedule_dir.clone();
+                    if ui
+                        .add(
+                            egui::TextEdit::singleline(&mut d)
+                                .hint_text("folder to scan (uses Custom tab dir if empty)")
+                                .desired_width(280.0),
+                        )
+                        .changed()
+                    {
+                        self.settings.schedule_dir = d;
+                        self.settings.save();
+                    }
+                    if ui.small_button("Browse…").clicked() {
+                        if let Some(p) = FileDialog::new().pick_folder() {
+                            self.settings.schedule_dir = p.display().to_string();
+                            self.settings.save();
+                        }
+                    }
+                });
+                if self.settings.schedule_dir.trim().is_empty() {
+                    ui.label(
+                        egui::RichText::new(
+                            "No folder set — scheduled runs will scan the Custom tab's directory.",
+                        )
+                        .weak()
+                        .small(),
+                    );
+                }
+            }
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 let registered = self.task_registered.unwrap_or_else(|| {
@@ -1777,11 +1828,16 @@ impl CleanerApp {
                     .changed()
                 {
                     if want {
+                        let sched_dir = if self.settings.schedule_dir.trim().is_empty() {
+                            self.custom.dir_path.clone()
+                        } else {
+                            self.settings.schedule_dir.clone()
+                        };
                         let args = helpers::task_command_args(
                             self.settings.schedule_target
                                 == crate::settings::ScheduleTarget::Custom,
                             self.settings.schedule_auto_clean,
-                            &self.custom.dir_path,
+                            &sched_dir,
                         );
                         match helpers::register_task(self.settings.schedule_hours, &args) {
                             Ok(()) => {
@@ -1941,6 +1997,10 @@ impl CleanerApp {
                 }
                 if ui.small_button("Old files (30d+)").clicked() {
                     self.custom.older_than_days = 30;
+                    self.custom.extensions.clear();
+                    self.custom.pattern.clear();
+                    self.custom.min_size_bytes = 0;
+                    self.custom.max_size_bytes = 0;
                 }
                 if ui.small_button("Big media (50MB+)").clicked() {
                     self.custom.extensions =
@@ -2408,7 +2468,7 @@ impl CleanerApp {
                     if self.settings.confirm_clean {
                         self.confirm_title = "Delete selected large files?".to_string();
                         self.confirm_body =
-                            format!("Permanently remove the {} selected files?", n);
+                            format!("Delete the {} selected files?", n);
                         self.confirm_action = Some(ConfirmAction::CleanFiles(self.tab));
                     } else {
                         self.start_clean_selected(self.tab);
@@ -3324,6 +3384,8 @@ impl eframe::App for CleanerApp {
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        // Stop any in-flight worker so a clean can't be cut mid-file.
+        self.cancel_flag.store(true, Ordering::Relaxed);
         // Make sure the tray icon disappears instead of lingering.
         self.tray.take();
     }
