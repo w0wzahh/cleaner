@@ -14,6 +14,37 @@ Things planned for the next release. Nothing here is final yet.
 
 ---
 
+## [2.8.0] — 2026-09-12
+
+The "proper app" release — installer, organized data folder, and a privacy
+stance you can verify.
+
+### Added
+- **Windows installer** (`Cleaner-Setup-2.8.0.exe`) built with Inno Setup:
+  per-user install to `%LOCALAPPDATA%\Programs\Cleaner` with no admin prompt,
+  Start Menu shortcut, optional desktop icon, and a registered uninstaller in
+  Windows Settings. Uninstall removes the whole program folder; it also offers
+  to delete the data folder if one exists elsewhere.
+- **Organized data folder**: when the exe can't write next to itself (e.g. an
+  admin install to `Program Files`), settings, history, and reports move to
+  `%APPDATA%\Cleaner\`. A `README.txt` inside explains every file.
+- Exported reports now go to a `reports\` subfolder of the data dir instead of
+  the working directory.
+- **Getting-started card** on the dashboard for first run — explains the
+  scan → review → clean flow and the dry-run default. Dismissible.
+- **Privacy card** in About: states plainly that nothing leaves the PC, and
+  shows where your data folder is.
+- Tooltips on the main scan/clean buttons, an "Open data folder" button, and
+  a sensible minimum window size.
+- **Exe icon embedded**: `cleaner.exe` shows the broom in Explorer, on the
+  taskbar, and in shortcuts.
+
+### Changed
+- The portable zip still keeps settings next to the exe — nothing moves
+  unless the exe's folder is read-only.
+
+---
+
 ## [2.7.1] — 2026-09-12
 
 ### Added
@@ -248,7 +279,8 @@ but it's where all of this started.
 
 ---
 
-[Unreleased]: https://github.com/w0wzahh/cleaner/compare/v2.7.1...HEAD
+[Unreleased]: https://github.com/w0wzahh/cleaner/compare/v2.8.0...HEAD
+[2.8.0]: https://github.com/w0wzahh/cleaner/compare/v2.7.1...v2.8.0
 [2.7.1]: https://github.com/w0wzahh/cleaner/compare/v2.7.0...v2.7.1
 [2.7.0]: https://github.com/w0wzahh/cleaner/compare/v2.6.0...v2.7.0
 [2.6.0]: https://github.com/w0wzahh/cleaner/compare/v2.5.0...v2.6.0

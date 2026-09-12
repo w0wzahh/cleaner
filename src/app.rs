@@ -1295,6 +1295,23 @@ impl CleanerApp {
     }
 
     fn draw_dashboard_inner(&mut self, ui: &mut egui::Ui) {
+        // First-run card: explain the safety model once, dismissible.
+        if !self.settings.welcomed {
+            card(ui, "Getting started", |ui| {
+                ui.label("1. Pick a tool on the left — or hit the big ring to scan your system.");
+                ui.label("2. Review what it found — nothing is deleted until you say so.");
+                ui.label(
+                    "3. Dry run is ON by default, so scans only preview. Toggle it off in Safety below when you're ready to clean for real.",
+                );
+                ui.add_space(4.0);
+                if ui.button("Got it — don't show this again").clicked() {
+                    self.settings.welcomed = true;
+                    self.settings.save();
+                }
+            });
+            ui.add_space(10.0);
+        }
+
         // Hero: welcome text + the big glowing START ring.
         card(ui, "", |ui| {
             ui.horizontal(|ui| {
@@ -1721,7 +1738,10 @@ impl CleanerApp {
 
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                if primary_button(ui, !busy, "Scan").clicked() {
+                if primary_button(ui, !busy, "Scan")
+                    .on_hover_text("Scan the folder using the filters above")
+                    .clicked()
+                {
                     self.start_custom_scan();
                 }
                 if ui
@@ -1756,6 +1776,9 @@ impl CleanerApp {
                     .map(|f| f.size)
                     .sum();
                 if danger_button(ui, !busy && n > 0, format!("Clean {} files", n))
+                    .on_hover_text(
+                        "Delete the selected files — honors dry run and recycle bin settings",
+                    )
                     .clicked()
                 {
                     if self.settings.confirm_clean {
@@ -2559,6 +2582,34 @@ impl CleanerApp {
 
         ui.add_space(10.0);
 
+        card(ui, "Privacy", |ui| {
+            ui.label(
+                "Cleaner never sends anything anywhere — no telemetry, no analytics, \
+                 no accounts, no network calls. Everything it writes stays on this PC.",
+            );
+            ui.add_space(4.0);
+            ui.label(
+                egui::RichText::new(format!(
+                    "Your data folder: {}",
+                    settings::data_dir().display()
+                ))
+                .weak()
+                .small()
+                .monospace(),
+            );
+            ui.label(
+                egui::RichText::new(
+                    "It contains settings, the history log, and exported reports — \
+                     plus a README.txt explaining each file. Delete the folder to \
+                     reset the app completely.",
+                )
+                .weak()
+                .small(),
+            );
+        });
+
+        ui.add_space(10.0);
+
         card(ui, "Links & files", |ui| {
             ui.horizontal(|ui| {
                 ui.label("Repository");
@@ -2571,6 +2622,9 @@ impl CleanerApp {
             ui.horizontal_wrapped(|ui| {
                 if ui.button("Check for updates").clicked() {
                     let _ = open::that("https://github.com/w0wzahh/cleaner/releases");
+                }
+                if ui.button("Open data folder").clicked() {
+                    reveal_in_explorer(&settings::data_dir());
                 }
                 if ui.button("Reveal settings file").clicked() {
                     reveal_in_explorer(&settings::settings_file_path());

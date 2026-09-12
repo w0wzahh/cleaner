@@ -50,6 +50,9 @@ pub struct Settings {
     /// Unix timestamp of the last scheduled run (0 = never).
     #[serde(default)]
     pub schedule_last_run: i64,
+    /// Whether the getting-started card on the dashboard has been dismissed.
+    #[serde(default)]
+    pub welcomed: bool,
 }
 
 fn default_schedule_hours() -> u32 {
@@ -106,41 +109,49 @@ impl Default for Settings {
             schedule_target: ScheduleTarget::System,
             schedule_auto_clean: false,
             schedule_last_run: 0,
+            welcomed: false,
         }
     }
 }
 
 impl Settings {
-    /// Prefer loading next to the running binary, falling back to CWD and then defaults.
+    /// Load from the data dir first, then migrate-friendly fallbacks:
+    /// the old next-to-exe location, then CWD, then defaults.
     pub fn load() -> Self {
-        if let Some(path) = binary_settings_path() {
+        let mut candidates: Vec<PathBuf> = vec![data_dir().join("cleaner_settings.json")];
+        if let Some(exe_dir) = binary_dir() {
+            candidates.push(exe_dir.join("cleaner_settings.json"));
+        }
+        candidates.push(PathBuf::from("cleaner_settings.json"));
+        for path in candidates {
             if let Ok(data) = std::fs::read_to_string(&path) {
                 if let Ok(s) = serde_json::from_str(&data) {
                     return s;
                 }
             }
         }
-        if let Ok(data) = std::fs::read_to_string("cleaner_settings.json") {
-            if let Ok(s) = serde_json::from_str(&data) {
-                return s;
-            }
-        }
         Self::default()
     }
 
     pub fn save(&self) {
-        let path = binary_settings_path().unwrap_or_else(|| PathBuf::from("cleaner_settings.json"));
+        let path = data_dir().join("cleaner_settings.json");
         if let Ok(json) = serde_json::to_string_pretty(self) {
             let _ = std::fs::write(&path, json);
         }
     }
 
-    /// Path used for the persistent operation log. Defaults next to the binary.
+    /// Path used for the persistent operation log. Relative names resolve
+    /// inside the data dir; absolute paths are honored as-is.
     pub fn log_path(&self) -> PathBuf {
         if !self.log_file.is_empty() {
-            PathBuf::from(&self.log_file)
+            let p = PathBuf::from(&self.log_file);
+            if p.is_absolute() {
+                p
+            } else {
+                data_dir().join(p)
+            }
         } else {
-            binary_dir().unwrap_or_else(|| PathBuf::from(".")).join("cleaner_history.log")
+            data_dir().join("cleaner_history.log")
         }
     }
 
@@ -177,11 +188,91 @@ pub(crate) fn default_dir() -> String {
         .to_string()
 }
 
-fn binary_settings_path() -> Option<PathBuf> {
-    binary_dir().map(|d| d.join("cleaner_settings.json"))
+/// Where the app keeps its data (settings, history log, exported reports).
+///
+/// Two modes:
+/// - **Portable / dev** — if the exe's folder is writable, everything stays
+///   next to the binary, exactly like before.
+/// - **Installed** — when the exe sits somewhere read-only (e.g.
+///   `Program Files` after using the installer), data goes to
+///   `%APPDATA%\Cleaner\` instead.
+///
+/// The folder gets a `README.txt` explaining what's inside.
+pub fn data_dir() -> PathBuf {
+    static DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    DIR.get_or_init(|| {
+        let dir = if let Some(exe_dir) = binary_dir() {
+            if dir_writable(&exe_dir) {
+                exe_dir
+            } else {
+                let base =
+                    dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
+                base.join("Cleaner")
+            }
+        } else {
+            PathBuf::from(".")
+        };
+        let _ = std::fs::create_dir_all(&dir);
+        write_data_readme(&dir);
+        dir
+    })
+    .clone()
+}
+
+/// Folder for exported reports — `reports\` inside the data dir.
+pub fn reports_dir() -> PathBuf {
+    let dir = data_dir().join("reports");
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
+/// True if we can create files in `dir` (probes by writing a temp file).
+fn dir_writable(dir: &std::path::Path) -> bool {
+    let probe = dir.join(".cleaner_write_probe");
+    match std::fs::File::create(&probe) {
+        Ok(_) => {
+            let _ = std::fs::remove_file(&probe);
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+/// Drop a plain-language guide into the data folder so curious users can tell
+/// what every file is for. Written once; never overwrites a user's copy.
+fn write_data_readme(dir: &std::path::Path) {
+    let path = dir.join("README.txt");
+    if path.exists() {
+        return;
+    }
+    let _ = std::fs::write(
+        &path,
+        "Cleaner — data folder\r\n\
+         =====================\r\n\
+         \r\n\
+         Everything the app saves lives in this folder. Nothing is sent\r\n\
+         anywhere — there is no telemetry, no accounts, no network calls.\r\n\
+         \r\n\
+         What each file is:\r\n\
+         \r\n\
+           cleaner_settings.json   All settings, stats, and your schedule.\r\n\
+                                   Plain JSON — you can read or edit it.\r\n\
+         \r\n\
+           cleaner_history.log     A running log of every scan and clean,\r\n\
+                                   so you can see exactly what happened.\r\n\
+         \r\n\
+           reports\\                Exported scan reports (.txt), one per\r\n\
+                                   export, timestamped.\r\n\
+         \r\n\
+           README.txt              This file.\r\n\
+         \r\n\
+         Want a completely clean slate? Close the app and delete this whole\r\n\
+         folder — Cleaner recreates it with fresh defaults next launch.\r\n\
+         (To remove the program itself, use Windows Settings > Apps.)\r\n",
+    );
 }
 
 /// Where the settings file lives (or will be written) — used by the About tab.
 pub fn settings_file_path() -> PathBuf {
-    binary_settings_path().unwrap_or_else(|| PathBuf::from("cleaner_settings.json"))
+    data_dir().join("cleaner_settings.json")
 }

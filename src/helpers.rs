@@ -196,8 +196,9 @@ pub fn export_report(files: &[MatchedFile], label: &str) -> Result<PathBuf, Stri
     for f in files {
         content.push_str(&format!("  {} - {}\n", human_size(f.size), f.path.display()));
     }
-    fs::write(&filename, content).map_err(|e| e.to_string())?;
-    Ok(PathBuf::from(filename))
+    let path = crate::settings::reports_dir().join(&filename);
+    fs::write(&path, content).map_err(|e| e.to_string())?;
+    Ok(path)
 }
 
 /// Parse strings produced by `human_size` back into bytes.

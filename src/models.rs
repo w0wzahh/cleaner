@@ -11,6 +11,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.0] - 2026-09-12
+### Added
+- Windows installer (Inno Setup) — per-user install, no admin prompt,
+  registered uninstaller, optional data-folder cleanup on uninstall.
+- Organized data folder with a README.txt explaining every file.
+- Getting-started card, privacy card, tooltips, min window size.
+- Exe icon embedded — the broom shows in Explorer and shortcuts.
+### Changed
+- Reports now export into the data folder's reports\ subfolder.
+
 ## [2.7.1] - 2026-09-12
 ### Added
 - Results filter box on Custom Clean, Duplicates, and Large Files.

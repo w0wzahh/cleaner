@@ -39,11 +39,24 @@ Safety, since that's the part that matters:
 - A protected-paths list that's never scanned or deleted, period
 - A persistent log records every operation
 
+Privacy: Cleaner makes **zero network calls**. No telemetry, no analytics, no
+accounts. You can check — the source is right here.
+
 ## Install
 
-Grab `cleaner-vX.X.X-windows-x64.zip` from the
-[Releases page](https://github.com/w0wzahh/cleaner/releases), unzip it, run
-`cleaner.exe`. No installer, no dependencies.
+**Installer (recommended):** grab `Cleaner-Setup-2.8.0.exe` from the
+[Releases page](https://github.com/w0wzahh/cleaner/releases) and run it. It
+installs per-user (no admin prompt), adds a Start Menu shortcut, and
+registers a proper uninstaller.
+
+**Portable zip:** grab `cleaner-v2.8.0-windows-x64.zip` instead, unzip
+anywhere, run `cleaner.exe`.
+
+## Uninstalling
+
+Settings → Apps → Cleaner → Uninstall, or "Uninstall Cleaner" in the Start
+Menu folder. It removes the whole program folder and then asks if you want
+the data folder gone too — say yes and there's genuinely nothing left.
 
 ## Using it
 
@@ -52,16 +65,28 @@ Grab `cleaner-vX.X.X-windows-x64.zip` from the
 3. Hit **Scan** — this only previews matches
 4. Look over the results, then hit **Clean**
 
-Five themes are in the header bar — Dark, Light, Nord, Dracula, Solarized —
-and switching between them animates instead of snapping.
+Six themes are in the header bar — Midnight is the default — and switching
+between them animates instead of snapping.
+
+## Where your files live
+
+Everything the app saves goes in one folder:
+
+- **Installed:** next to the exe (`...\Programs\Cleaner\`) — the whole thing
+  self-destructs on uninstall.
+- **Portable:** next to wherever you put `cleaner.exe`.
+- If the exe's folder is ever read-only, data moves to `%APPDATA%\Cleaner\`
+  automatically.
+
+Inside you'll find `cleaner_settings.json`, `cleaner_history.log`, a
+`reports\` folder for exports, and a `README.txt` that explains each one.
+The About tab has an "Open data folder" button if you ever want to look.
 
 ## Settings
 
-Cleaner writes `cleaner_settings.json` next to the exe on first run:
-
 | Field | What it does |
 |---|---|
-| `theme` | `Dark`, `Light`, `Nord`, `Dracula`, or `Solarized` |
+| `theme` | `Midnight`, `Dark`, `Light`, `Nord`, `Dracula`, or `Solarized` |
 | `dry_run` | Preview matches without deleting anything |
 | `use_trash` | Send deleted files to the recycle bin |
 | `recursive` | Include subdirectories in custom scans |
@@ -86,9 +111,12 @@ cargo build --release
 The binary lands at `target\release\cleaner.exe`. `cargo run` works for
 development.
 
+To build the installer you'll also need [Inno Setup 6](https://jrsoftware.org/isinfo.php),
+then run `ISCC.exe installer.iss` — the setup lands in `dist\`.
+
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md). Current version is **2.5.0**.
+See [CHANGELOG.md](CHANGELOG.md). Current version is **2.8.0**.
 
 ## License
 
