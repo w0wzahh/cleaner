@@ -635,12 +635,11 @@ pub struct CleanerApp {
     pub pending_auto_clean: bool,
     pub initial_theme_applied: bool,
 
-    /// System-tray icon (always present while the app runs).
+    /// System-tray icon (always present while the app runs). The icon handle
+    /// is only held so it isn't dropped; events are handled by a watcher thread.
     pub tray: Option<TrayIcon>,
-    pub tray_show_item: Option<MenuItem>,
-    pub tray_quit_item: Option<MenuItem>,
-    /// True while the main window is hidden to the tray.
-    pub window_hidden: bool,
+    /// Set once the tray + watcher thread have been created (or failed).
+    pub tray_setup_done: bool,
     /// Cached "is the Windows scheduled task registered" state.
     pub task_registered: Option<bool>,
 
@@ -685,9 +684,7 @@ impl Default for CleanerApp {
             pending_theme_change: None,
             pending_auto_clean: false,
             tray: None,
-            tray_show_item: None,
-            tray_quit_item: None,
-            window_hidden: false,
+            tray_setup_done: false,
             task_registered: None,
             custom: CustomCleanerState::default(),
             duplicates: DuplicateState::default(),
@@ -716,15 +713,21 @@ impl Default for CleanerApp {
         app.total_files_cleaned = app.settings.total_files_cleaned;
         app.total_space_freed = app.settings.total_space_freed;
         app.rebuild_custom_targets();
-        app.setup_tray();
         app
     }
 }
 
 impl CleanerApp {
-    /// Create the system-tray icon with a Show/Quit menu. Failure is
-    /// non-fatal — the app works fine without a tray icon.
-    fn setup_tray(&mut self) {
+    /// Create the system-tray icon with a Show/Quit menu, then spawn a
+    /// dedicated watcher thread for tray events.
+    ///
+    /// The watcher runs on its own thread because `update()` stops being
+    /// called once the window is hidden — polling from inside the frame loop
+    /// would never see the "Show" click. `egui::Context` is cheap to clone
+    /// and `send_viewport_cmd`/`request_repaint` are safe from any thread.
+    /// Failure is non-fatal — the app works fine without a tray icon.
+    fn setup_tray(&mut self, ctx: &egui::Context) {
+        self.tray_setup_done = true;
         let icon = themes::generate_icon();
         let Ok(tray_icon_img) =
             tray_icon::Icon::from_rgba(icon.rgba.clone(), icon.width, icon.height)
@@ -733,53 +736,50 @@ impl CleanerApp {
         };
         let show = MenuItem::new("Show Cleaner", true, None);
         let quit = MenuItem::new("Quit", true, None);
+        let show_id = show.id().clone();
+        let quit_id = quit.id().clone();
         let menu = Menu::new();
         let _ = menu.append(&show);
         let _ = menu.append(&PredefinedMenuItem::separator());
         let _ = menu.append(&quit);
-        if let Ok(tray) = TrayIconBuilder::new()
+        match TrayIconBuilder::new()
             .with_menu(Box::new(menu))
             .with_tooltip("Cleaner")
             .with_icon(tray_icon_img)
             .build()
         {
-            self.tray = Some(tray);
-            self.tray_show_item = Some(show);
-            self.tray_quit_item = Some(quit);
+            Ok(tray) => self.tray = Some(tray),
+            Err(_) => return,
         }
-    }
 
-    /// Poll tray-icon and tray-menu events; call once per frame.
-    fn poll_tray(&mut self, ctx: &egui::Context) {
-        if self.tray.is_none() {
-            return;
-        }
-        for event in TrayIconEvent::receiver().try_iter() {
-            if let TrayIconEvent::DoubleClick {
-                button: MouseButton::Left,
-                ..
-            } = event
-            {
-                self.show_window(ctx);
+        let ctx = ctx.clone();
+        thread::spawn(move || loop {
+            let mut restore = false;
+            for event in TrayIconEvent::receiver().try_iter() {
+                if let TrayIconEvent::DoubleClick {
+                    button: MouseButton::Left,
+                    ..
+                } = event
+                {
+                    restore = true;
+                }
             }
-        }
-        let show_id = self.tray_show_item.as_ref().map(|i| i.id().clone());
-        let quit_id = self.tray_quit_item.as_ref().map(|i| i.id().clone());
-        for event in MenuEvent::receiver().try_iter() {
-            if Some(&event.id) == show_id.as_ref() {
-                self.show_window(ctx);
-            } else if Some(&event.id) == quit_id.as_ref() {
-                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            for event in MenuEvent::receiver().try_iter() {
+                if event.id == show_id {
+                    restore = true;
+                } else if event.id == quit_id {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    return;
+                }
             }
-        }
-    }
-
-    /// Restore the window from the tray.
-    fn show_window(&mut self, ctx: &egui::Context) {
-        self.window_hidden = false;
-        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
-        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
-        ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            if restore {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+                ctx.request_repaint();
+            }
+            thread::sleep(std::time::Duration::from_millis(50));
+        });
     }
 
     /// Hide the window to the tray.
@@ -788,7 +788,6 @@ impl CleanerApp {
             self.add_log("Tray icon unavailable on this system.");
             return;
         }
-        self.window_hidden = true;
         ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
     }
 }
@@ -2900,19 +2899,16 @@ impl eframe::App for CleanerApp {
             self.theme_anim.to = self.settings.theme.visuals();
             self.initial_theme_applied = true;
         }
+        if !self.tray_setup_done {
+            self.setup_tray(ctx);
+        }
 
         self.update_theme_animation(ctx);
         self.poll_messages(ctx);
-        self.poll_tray(ctx);
         self.maybe_run_scheduled();
-        if self.settings.schedule_enabled || self.window_hidden {
-            // Wake up periodically so due scans fire and tray events get
-            // polled even while idle or hidden.
-            ctx.request_repaint_after(std::time::Duration::from_secs(if self.window_hidden {
-                1
-            } else {
-                30
-            }));
+        if self.settings.schedule_enabled {
+            // Wake up periodically so due scans fire even when idle.
+            ctx.request_repaint_after(std::time::Duration::from_secs(30));
         }
 
         if self.status_toast > 0 {
@@ -3185,7 +3181,5 @@ impl eframe::App for CleanerApp {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         // Make sure the tray icon disappears instead of lingering.
         self.tray.take();
-        self.tray_show_item.take();
-        self.tray_quit_item.take();
     }
 }

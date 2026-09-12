@@ -14,6 +14,18 @@ Things planned for the next release. Nothing here is final yet.
 
 ---
 
+## [2.9.1] — 2026-09-12
+
+### Fixed
+- **Tray restore** — "Show Cleaner" / double-click now reliably brings the
+  window back. Tray events are handled by a dedicated watcher thread instead
+  of the UI loop, which stops running while the window is hidden.
+- **Stray console window** — the exe is now a proper GUI-subsystem binary;
+  launching it no longer opens an empty terminal. CLI mode re-attaches to
+  the parent console, so `cleaner help` etc. still print normally.
+
+---
+
 ## [2.9.0] — 2026-09-12
 
 ### Added
@@ -298,7 +310,8 @@ but it's where all of this started.
 
 ---
 
-[Unreleased]: https://github.com/w0wzahh/cleaner/compare/v2.9.0...HEAD
+[Unreleased]: https://github.com/w0wzahh/cleaner/compare/v2.9.1...HEAD
+[2.9.1]: https://github.com/w0wzahh/cleaner/compare/v2.9.0...v2.9.1
 [2.9.0]: https://github.com/w0wzahh/cleaner/compare/v2.8.0...v2.9.0
 [2.8.0]: https://github.com/w0wzahh/cleaner/compare/v2.7.1...v2.8.0
 [2.7.1]: https://github.com/w0wzahh/cleaner/compare/v2.7.0...v2.7.1
