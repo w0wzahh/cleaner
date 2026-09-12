@@ -817,12 +817,16 @@ impl CleanerApp {
             self.add_log("Tray icon unavailable on this system.");
             return;
         }
-        // Hide via user32, not a viewport command — once hidden, egui never
-        // drains its command queue again (no repaint events), which is also
-        // why the watcher thread restores via ShowWindow directly.
-        helpers::hide_main_window();
-        // Fallback for the (unlikely) case the HWND was never captured.
-        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        // Park the window off-screen via user32 — NOT ViewportCommand or
+        // SW_HIDE: a hidden window gets no repaint events, which starves
+        // update() and would freeze scheduled scans and worker polling.
+        if helpers::have_main_hwnd() {
+            helpers::hide_main_window();
+        } else {
+            // No HWND captured — tray restore won't work either, but at
+            // least hide the window so the button isn't a no-op.
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        }
         ctx.request_repaint();
     }
 }
@@ -965,13 +969,19 @@ impl CleanerApp {
                 self.start_system_scan();
             }
             crate::settings::ScheduleTarget::Custom => {
+                // Never fall back to the Custom tab's directory here — it
+                // defaults to the user's home folder, which would make a
+                // scheduled (possibly auto-cleaning) run sweep the whole
+                // profile. No configured folder means skip.
+                if self.settings.schedule_dir.trim().is_empty() {
+                    self.add_log(
+                        "Scheduled scan skipped — pick a folder in the Scheduler card.",
+                    );
+                    return;
+                }
                 self.tab = Tab::CustomClean;
                 self.pending_auto_clean = auto.then_some(Tab::CustomClean);
-                // Scheduled custom scans use their own configured folder —
-                // the Custom tab's dir resets to the home folder each launch.
-                if !self.settings.schedule_dir.trim().is_empty() {
-                    self.custom.dir_path = self.settings.schedule_dir.clone();
-                }
+                self.custom.dir_path = self.settings.schedule_dir.clone();
                 self.start_custom_scan();
             }
         }
@@ -1374,35 +1384,46 @@ impl CleanerApp {
                         paths,
                     } => {
                         self.last_cleaned_paths = paths;
-                        self.total_files_cleaned += deleted;
-                        self.total_space_freed += freed;
-                        self.settings.total_files_cleaned += deleted;
-                        self.settings.total_space_freed += freed;
-                        let today = Local::now().format("%Y-%m-%d").to_string();
-                        *self.settings.clean_history.entry(today).or_default() +=
-                            deleted;
-                        self.settings.last_clean =
-                            Local::now().format("%Y-%m-%d %H:%M").to_string();
-                        while self.settings.clean_history.len() > 60 {
-                            if let Some(k) =
-                                self.settings.clean_history.keys().next().cloned()
-                            {
-                                self.settings.clean_history.remove(&k);
+                        // A dry-run clean reports what *would* be deleted —
+                        // don't inflate lifetime stats or the activity chart.
+                        if !self.settings.dry_run {
+                            self.total_files_cleaned += deleted;
+                            self.total_space_freed += freed;
+                            self.settings.total_files_cleaned += deleted;
+                            self.settings.total_space_freed += freed;
+                            let today = Local::now().format("%Y-%m-%d").to_string();
+                            *self.settings.clean_history.entry(today).or_default() +=
+                                deleted;
+                            self.settings.last_clean =
+                                Local::now().format("%Y-%m-%d %H:%M").to_string();
+                            while self.settings.clean_history.len() > 60 {
+                                if let Some(k) =
+                                    self.settings.clean_history.keys().next().cloned()
+                                {
+                                    self.settings.clean_history.remove(&k);
+                                }
                             }
+                            self.settings.save();
                         }
-                        self.settings.save();
                     }
                     workers::WorkerMessage::Done { summary } => {
+                        let was_scanning = self.scanning;
                         let was_cleaning = self.cleaning;
                         self.add_log(&summary);
-                        self.status = if self.scanning {
+                        self.status = if was_scanning {
                             "Scan complete".to_string()
                         } else {
                             "Clean complete".to_string()
                         };
                         self.status_toast = 120;
-                        if self.scanning {
-                            self.scanning = false;
+                        // Clear busy flags BEFORE a possible auto-clean —
+                        // start_clean_selected installs its own flag and a
+                        // fresh channel on self.rx, which must not be
+                        // clobbered by the cleanup below.
+                        self.scanning = false;
+                        self.cleaning = false;
+                        self.progress = 0.0;
+                        if was_scanning {
                             self.last_scan_summary = summary;
                             if let Some(tab) = self.pending_auto_clean.take() {
                                 if self.settings.dry_run {
@@ -1415,8 +1436,6 @@ impl CleanerApp {
                                 }
                             }
                         }
-                        self.cleaning = false;
-                        self.progress = 0.0;
                         if was_cleaning && !self.settings.dry_run {
                             self.prune_after_clean();
                         }
@@ -1446,9 +1465,10 @@ impl CleanerApp {
             if still_active {
                 self.rx = Some(rx);
                 ctx.request_repaint();
-            } else {
-                self.rx = None;
             }
+            // When !still_active, self.rx stays whatever it is: None if the
+            // worker ended, or the fresh channel an auto-clean just installed
+            // — clearing it here would orphan that worker's messages.
         }
     }
 
@@ -1787,7 +1807,7 @@ impl CleanerApp {
                     if ui
                         .add(
                             egui::TextEdit::singleline(&mut d)
-                                .hint_text("folder to scan (uses Custom tab dir if empty)")
+                                .hint_text("folder to scan (required)")
                                 .desired_width(280.0),
                         )
                         .changed()
@@ -1805,7 +1825,7 @@ impl CleanerApp {
                 if self.settings.schedule_dir.trim().is_empty() {
                     ui.label(
                         egui::RichText::new(
-                            "No folder set — scheduled runs will scan the Custom tab's directory.",
+                            "No folder set — scheduled runs are skipped until you pick one.",
                         )
                         .weak()
                         .small(),
@@ -1827,17 +1847,20 @@ impl CleanerApp {
                     )
                     .changed()
                 {
-                    if want {
-                        let sched_dir = if self.settings.schedule_dir.trim().is_empty() {
-                            self.custom.dir_path.clone()
-                        } else {
-                            self.settings.schedule_dir.clone()
-                        };
+                    let is_custom = self.settings.schedule_target
+                        == crate::settings::ScheduleTarget::Custom;
+                    if want && is_custom && self.settings.schedule_dir.trim().is_empty() {
+                        // Registering now would bake the home folder into the
+                        // task — a scheduled clean of the whole user profile.
+                        self.add_log(
+                            "Scheduled task not registered — pick a schedule folder first.",
+                        );
+                        self.task_registered = Some(false);
+                    } else if want {
                         let args = helpers::task_command_args(
-                            self.settings.schedule_target
-                                == crate::settings::ScheduleTarget::Custom,
+                            is_custom,
                             self.settings.schedule_auto_clean,
-                            &sched_dir,
+                            &self.settings.schedule_dir,
                         );
                         match helpers::register_task(self.settings.schedule_hours, &args) {
                             Ok(()) => {

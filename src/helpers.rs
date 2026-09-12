@@ -482,6 +482,7 @@ pub fn unregister_task() -> Result<(), String> {
 #[cfg(windows)]
 mod win32_window {
     use std::sync::atomic::{AtomicIsize, Ordering};
+    use std::sync::Mutex;
 
     #[link(name = "user32")]
     extern "system" {
@@ -489,31 +490,96 @@ mod win32_window {
         fn SetForegroundWindow(hwnd: isize) -> i32;
         fn IsIconic(hwnd: isize) -> i32;
         fn PostMessageW(hwnd: isize, msg: u32, wparam: usize, lparam: isize) -> i32;
+        fn GetWindowLongPtrW(hwnd: isize, index: i32) -> isize;
+        fn SetWindowLongPtrW(hwnd: isize, index: i32, new_value: isize) -> isize;
+        fn SetWindowPos(
+            hwnd: isize,
+            after: isize,
+            x: i32,
+            y: i32,
+            cx: i32,
+            cy: i32,
+            flags: u32,
+        ) -> i32;
+        fn GetWindowPlacement(hwnd: isize, placement: *mut WindowPlacement) -> i32;
+        fn SetWindowPlacement(hwnd: isize, placement: *const WindowPlacement) -> i32;
     }
 
-    const SW_HIDE: i32 = 0;
+    #[repr(C)]
+    struct WindowPlacement {
+        length: u32,
+        flags: u32,
+        show_cmd: u32,
+        min_position: [i32; 2],
+        max_position: [i32; 2],
+        normal_position: [i32; 4],
+    }
+
     const SW_SHOW: i32 = 5;
     const SW_RESTORE: i32 = 9;
     const WM_CLOSE: u32 = 0x0010;
+    const GWL_EXSTYLE: i32 = -20;
+    const WS_EX_TOOLWINDOW: isize = 0x0000_0080;
+    const WS_EX_APPWINDOW: isize = 0x0004_0000;
+    const WS_EX_NOACTIVATE: isize = 0x0800_0000;
+    const SWP_NOSIZE: u32 = 0x0001;
+    const SWP_NOMOVE: u32 = 0x0002;
+    const SWP_NOZORDER: u32 = 0x0004;
+    const SWP_NOACTIVATE: u32 = 0x0010;
+    const SWP_FRAMECHANGED: u32 = 0x0020;
 
     static MAIN_HWND: AtomicIsize = AtomicIsize::new(0);
+    static SAVED_PLACEMENT: Mutex<Option<WindowPlacement>> = Mutex::new(None);
 
     /// Store the main window handle (called once from the eframe creation cb).
     pub fn set_main_hwnd(hwnd: isize) {
         MAIN_HWND.store(hwnd, Ordering::Relaxed);
     }
 
+    pub fn have_main_hwnd() -> bool {
+        MAIN_HWND.load(Ordering::Relaxed) != 0
+    }
+
     fn hwnd() -> isize {
         MAIN_HWND.load(Ordering::Relaxed)
     }
 
-    /// Hide the main window (tray "minimize").
+    /// "Hide" the main window for the tray feature.
+    ///
+    /// This deliberately does NOT call ShowWindow(SW_HIDE): a truly hidden
+    /// window never receives WM_PAINT, so winit stops delivering redraws and
+    /// `update()` — which drives scheduled scans and worker polling — is
+    /// starved. Instead the window is parked off-screen and given the
+    /// tool-window style (no taskbar or alt-tab entry). It stays WS_VISIBLE
+    /// from Windows' point of view, so the egui loop keeps running.
     pub fn hide_main_window() {
         let h = hwnd();
-        if h != 0 {
-            unsafe {
-                ShowWindow(h, SW_HIDE);
+        if h == 0 {
+            return;
+        }
+        unsafe {
+            let mut wp: WindowPlacement = std::mem::zeroed();
+            wp.length = std::mem::size_of::<WindowPlacement>() as u32;
+            if GetWindowPlacement(h, &mut wp) != 0 {
+                if let Ok(mut slot) = SAVED_PLACEMENT.lock() {
+                    *slot = Some(wp);
+                }
             }
+            let ex = GetWindowLongPtrW(h, GWL_EXSTYLE);
+            SetWindowLongPtrW(
+                h,
+                GWL_EXSTYLE,
+                (ex | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE) & !WS_EX_APPWINDOW,
+            );
+            SetWindowPos(
+                h,
+                0,
+                -32000,
+                -32000,
+                0,
+                0,
+                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+            );
         }
     }
 
@@ -524,11 +590,31 @@ mod win32_window {
             return;
         }
         unsafe {
+            let ex = GetWindowLongPtrW(h, GWL_EXSTYLE);
+            SetWindowLongPtrW(
+                h,
+                GWL_EXSTYLE,
+                (ex & !WS_EX_TOOLWINDOW & !WS_EX_NOACTIVATE) | WS_EX_APPWINDOW,
+            );
+            if let Ok(mut slot) = SAVED_PLACEMENT.lock() {
+                if let Some(wp) = slot.take() {
+                    SetWindowPlacement(h, &wp);
+                }
+            }
             if IsIconic(h) != 0 {
                 ShowWindow(h, SW_RESTORE);
             } else {
                 ShowWindow(h, SW_SHOW);
             }
+            SetWindowPos(
+                h,
+                0,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED,
+            );
             SetForegroundWindow(h);
         }
     }
@@ -551,6 +637,10 @@ pub use win32_window::*;
 /// code is never exercised on other platforms.
 #[cfg(not(windows))]
 pub fn set_main_hwnd(_hwnd: isize) {}
+#[cfg(not(windows))]
+pub fn have_main_hwnd() -> bool {
+    false
+}
 #[cfg(not(windows))]
 pub fn hide_main_window() {}
 #[cfg(not(windows))]

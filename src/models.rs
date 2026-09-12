@@ -11,6 +11,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.5] - 2026-09-12
+### Fixed
+- Third audit pass. Scheduled auto-clean after a scan no longer loses its
+  worker (the Done handler cleared the new clean's flag and channel);
+  dry-run cleans no longer inflate lifetime stats and the activity chart;
+  scheduled Custom scans with no folder configured are skipped instead of
+  sweeping the home directory, and registering the Windows task in that
+  state is blocked; "To tray" now parks the window off-screen instead of
+  hiding it, so repaints keep flowing and scheduled scans + worker results
+  keep processing while the app sits in the tray.
+
 ## [2.9.4] - 2026-09-12
 ### Fixed
 - Second audit pass. Highlights: scheduled Custom scans now use their own

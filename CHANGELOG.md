@@ -14,6 +14,38 @@ Things planned for the next release. Nothing here is final yet.
 
 ---
 
+## [2.9.5] — 2026-09-12
+
+Third audit pass — deeper edge cases, plus online research into known
+crate/platform pitfalls.
+
+### Fixed
+- Scheduled auto-clean was silently orphaned: when a scheduled scan
+  finished and auto-clean kicked off, the Done handler then cleared the
+  new clean's `cleaning` flag and threw away its channel — the clean ran
+  but the UI never saw it finish and results were never pruned.
+- Dry-run cleans inflated lifetime stats — "Total files cleaned" and the
+  activity chart counted files that were only previewed.
+- A scheduled "Custom folder" scan with no schedule folder set still fell
+  back to the Custom tab's directory — the home folder after a restart.
+  The run is now skipped with a logged warning, and registering the
+  Windows task in that state is blocked.
+- "To tray" no longer truly hides the window: a `SW_HIDE`'d window never
+  receives WM_PAINT, so winit stops delivering redraws and `update()` —
+  which drives the scheduler and worker polling — was starved. The window
+  is now parked off-screen with the tool-window style (invisible, no
+  taskbar entry, still WS_VISIBLE), so everything keeps working in the
+  tray exactly as if the window were visible.
+
+### Verified against upstream issues
+- `open` 4.2 uses ShellExecuteExW — the `&`-in-URL truncation bug (open-rs
+  #67) is fixed in our version; the bug-report mailto with `&body=` works.
+- `trash::delete` runs on worker threads, never the event loop — avoids
+  the re-entrant COM crash from winit #1587.
+- schtasks `/TR` quoting with nested quoted paths verified end-to-end.
+
+---
+
 ## [2.9.4] — 2026-09-12
 
 Second audit pass — more edge cases found and fixed.
