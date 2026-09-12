@@ -19,6 +19,33 @@ Things planned for the next release. Nothing here is final yet.
 
 ---
 
+## [2.4.1] — 2026-09-12
+
+UI overhaul and bug-fix release.
+
+### Added
+- **New UI**: left sidebar navigation, header bar, card-based layouts, and
+  per-theme accent colors with rounded widgets.
+- **Dashboard**: stat cards, safety toggles, quick actions, and a recent
+  activity view (the log was previously written but never shown).
+- **Large Files**: checkboxes per result, select-all/clear, and a clean action.
+- **Storage**: disk list is now cached with a manual Refresh button instead of
+  re-enumerating drives every frame.
+
+### Fixed
+- **Crash after cleaning**: the app panicked while parsing the clean summary
+  string (`start > end` slice). Clean results now use a structured message.
+- **Cancel now works** for custom, large-file, system, and empty-folder scans.
+- Duplicate quick-hash only reads the first 8 KB instead of whole files;
+  full hashes are streamed instead of loaded into memory.
+- Zero-byte files are no longer reported as duplicates.
+- Empty-folder removal now respects dry-run and recycle-bin settings.
+- The duplicate "wasted space" total now tracks checkbox selection.
+- The `default_dir` setting is now actually honored.
+- "Reveal settings file" now opens the settings file (was opening the log).
+
+---
+
 ## [2.4.0] — 2025-02-01
 
 The "make it feel like a real product" release.
