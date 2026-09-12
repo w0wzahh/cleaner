@@ -94,7 +94,8 @@ fn danger_button(ui: &mut egui::Ui, enabled: bool, text: impl Into<String>) -> e
     )
 }
 
-/// Hand-drawn line icons — emoji fonts aren't reliable on every machine.
+/// Hand-drawn filled icons — emoji fonts aren't reliable on every machine.
+/// Silhouette style, consistent with the reference design's iconography.
 #[derive(Clone, Copy)]
 enum Glyph {
     House,
@@ -108,107 +109,168 @@ enum Glyph {
     List,
     Info,
     Clock,
+    Eye,
+    Check,
 }
 
-/// Paint a small line icon centered at `c`. `h` is the half-size in points.
+/// Paint a small filled icon centered at `c`. `h` is the half-size in points;
+/// `bg` is the surface color used for cut-out details.
 fn paint_glyph(
     p: &egui::Painter,
     c: egui::Pos2,
     h: f32,
     g: Glyph,
     col: egui::Color32,
+    bg: egui::Color32,
 ) {
-    let st = egui::Stroke::new((h * 0.22).max(1.0), col);
     let pt = |dx: f32, dy: f32| c + egui::vec2(dx * h, dy * h);
+    let poly = |p: &egui::Painter, pts: &[(f32, f32)], col: egui::Color32| {
+        p.add(egui::Shape::convex_polygon(
+            pts.iter().map(|&(x, y)| pt(x, y)).collect(),
+            col,
+            egui::Stroke::NONE,
+        ));
+    };
+    let srect =
+        |x0: f32, y0: f32, x1: f32, y1: f32, r: f32, col: egui::Color32| {
+            p.rect_filled(
+                egui::Rect::from_min_max(pt(x0, y0), pt(x1, y1)),
+                r,
+                col,
+            );
+        };
+    let scirc = |dx: f32, dy: f32, rad: f32, col: egui::Color32| {
+        p.circle_filled(pt(dx, dy), rad * h, col);
+    };
     match g {
         Glyph::House => {
-            p.line_segment([pt(-1.0, 0.1), pt(0.0, -0.9)], st);
-            p.line_segment([pt(0.0, -0.9), pt(1.0, 0.1)], st);
-            p.line_segment([pt(-0.72, -0.05), pt(-0.72, 0.9)], st);
-            p.line_segment([pt(-0.72, 0.9), pt(0.72, 0.9)], st);
-            p.line_segment([pt(0.72, 0.9), pt(0.72, -0.05)], st);
+            poly(
+                p,
+                &[
+                    (-1.0, 0.05),
+                    (0.0, -0.95),
+                    (1.0, 0.05),
+                    (0.72, 0.05),
+                    (0.72, 0.9),
+                    (-0.72, 0.9),
+                    (-0.72, 0.05),
+                ],
+                col,
+            );
         }
         Glyph::Chart => {
-            p.line_segment([pt(-1.0, 0.9), pt(1.0, 0.9)], st);
-            for (x, top) in [(-0.6, 0.1), (0.0, -0.45), (0.6, -0.85)] {
-                p.line_segment(
-                    [pt(x, 0.9), pt(x, top)],
-                    egui::Stroke::new(h * 0.3, col),
-                );
-            }
+            srect(-0.9, 0.15, -0.5, 0.9, h * 0.1, col);
+            srect(-0.2, -0.35, 0.2, 0.9, h * 0.1, col);
+            srect(0.5, -0.85, 0.9, 0.9, h * 0.1, col);
         }
         Glyph::Disk => {
-            p.rect_stroke(
-                egui::Rect::from_center_size(c, egui::vec2(1.9 * h, 1.5 * h)),
-                h * 0.25,
-                st,
-            );
-            p.circle_stroke(c, h * 0.4, st);
+            srect(-1.0, -0.7, 1.0, 0.7, h * 0.25, col);
+            scirc(0.55, 0.0, 0.22, bg);
+            srect(-0.75, -0.12, -0.3, 0.12, h * 0.1, bg);
         }
         Glyph::Broom => {
-            p.line_segment([pt(0.55, -1.0), pt(-0.1, -0.25)], st);
-            p.line_segment([pt(-0.15, -0.2), pt(-0.95, 0.55)], st);
-            p.line_segment([pt(-0.15, -0.2), pt(-0.35, 0.95)], st);
-            p.line_segment([pt(-0.15, -0.2), pt(0.15, 0.8)], st);
-            p.line_segment([pt(-0.95, 0.55), pt(0.15, 0.8)], st);
+            poly(
+                p,
+                &[(0.38, -0.95), (0.62, -0.78), (-0.05, -0.05), (-0.28, -0.22)],
+                col,
+            );
+            poly(
+                p,
+                &[
+                    (-0.35, -0.15),
+                    (-0.95, 0.5),
+                    (-0.45, 0.95),
+                    (0.1, 0.8),
+                    (0.0, -0.05),
+                ],
+                col,
+            );
+            // Ferrule band, cut out of the silhouette.
+            p.line_segment(
+                [pt(-0.42, -0.18), pt(-0.08, 0.08)],
+                egui::Stroke::new(h * 0.16, bg),
+            );
         }
         Glyph::Copy => {
-            p.line_segment([pt(-0.35, -0.85), pt(0.85, -0.85)], st);
-            p.line_segment([pt(0.85, -0.85), pt(0.85, 0.35)], st);
-            p.line_segment([pt(-0.35, -0.85), pt(-0.35, -0.55)], st);
-            p.rect_stroke(
-                egui::Rect::from_min_max(pt(-0.85, -0.35), pt(0.35, 0.95)),
-                h * 0.15,
-                st,
-            );
+            srect(-0.2, -0.9, 0.9, 0.35, h * 0.18, col.gamma_multiply(0.45));
+            srect(-0.9, -0.25, 0.35, 0.9, h * 0.18, col);
         }
         Glyph::File => {
-            p.rect_stroke(
-                egui::Rect::from_min_max(pt(-0.7, -0.9), pt(0.7, 0.9)),
-                h * 0.15,
-                st,
+            poly(
+                p,
+                &[
+                    (-0.7, -0.9),
+                    (0.2, -0.9),
+                    (0.7, -0.4),
+                    (0.7, 0.9),
+                    (-0.7, 0.9),
+                ],
+                col,
             );
-            p.line_segment([pt(-0.4, -0.4), pt(0.4, -0.4)], st);
-            p.line_segment([pt(-0.4, 0.0), pt(0.4, 0.0)], st);
-            p.line_segment([pt(-0.4, 0.4), pt(0.15, 0.4)], st);
+            poly(
+                p,
+                &[(0.2, -0.9), (0.7, -0.4), (0.2, -0.4)],
+                bg,
+            );
         }
         Glyph::Screen => {
-            p.rect_stroke(
-                egui::Rect::from_min_max(pt(-0.95, -0.85), pt(0.95, 0.3)),
-                h * 0.15,
-                st,
-            );
-            p.line_segment([pt(0.0, 0.3), pt(0.0, 0.75)], st);
-            p.line_segment([pt(-0.35, 0.75), pt(0.35, 0.75)], st);
+            srect(-1.0, -0.75, 1.0, 0.3, h * 0.15, col);
+            srect(-0.15, 0.3, 0.15, 0.62, h * 0.05, col);
+            srect(-0.5, 0.62, 0.5, 0.82, h * 0.08, col);
         }
         Glyph::Trash => {
-            p.line_segment([pt(-0.6, -0.3), pt(-0.4, 0.9)], st);
-            p.line_segment([pt(0.6, -0.3), pt(0.4, 0.9)], st);
-            p.line_segment([pt(-0.4, 0.9), pt(0.4, 0.9)], st);
-            p.line_segment([pt(-0.85, -0.55), pt(0.85, -0.55)], st);
-            p.line_segment([pt(-0.3, -0.55), pt(-0.3, -0.85)], st);
-            p.line_segment([pt(-0.3, -0.85), pt(0.3, -0.85)], st);
-            p.line_segment([pt(0.3, -0.85), pt(0.3, -0.55)], st);
+            srect(-0.85, -0.72, 0.85, -0.5, h * 0.1, col);
+            srect(-0.3, -0.95, 0.3, -0.72, h * 0.08, col);
+            poly(
+                p,
+                &[(-0.62, -0.35), (0.62, -0.35), (0.42, 0.9), (-0.42, 0.9)],
+                col,
+            );
         }
         Glyph::List => {
             for i in -1..=1 {
                 let y = i as f32 * 0.55;
-                p.circle_filled(pt(-0.7, y), h * 0.13, col);
-                p.line_segment([pt(-0.3, y), pt(0.85, y)], st);
+                scirc(-0.7, y, 0.14, col);
+                srect(-0.3, y - 0.11, 0.9, y + 0.11, h * 0.1, col);
             }
         }
         Glyph::Info => {
-            p.circle_stroke(c, h * 0.9, st);
-            p.circle_filled(pt(0.0, -0.4), h * 0.13, col);
-            p.line_segment(
-                [pt(0.0, -0.05), pt(0.0, 0.55)],
-                egui::Stroke::new(h * 0.28, col),
-            );
+            scirc(0.0, 0.0, 0.95, col);
+            scirc(0.0, -0.42, 0.16, bg);
+            srect(-0.13, -0.08, 0.13, 0.6, h * 0.1, bg);
         }
         Glyph::Clock => {
-            p.circle_stroke(c, h * 0.9, st);
-            p.line_segment([c, pt(0.0, -0.55)], st);
-            p.line_segment([c, pt(0.4, 0.15)], st);
+            scirc(0.0, 0.0, 0.95, col);
+            p.line_segment(
+                [c, pt(0.0, -0.5)],
+                egui::Stroke::new(h * 0.22, bg),
+            );
+            p.line_segment(
+                [c, pt(0.38, 0.2)],
+                egui::Stroke::new(h * 0.22, bg),
+            );
+        }
+        Glyph::Eye => {
+            poly(
+                p,
+                &[
+                    (-1.0, 0.0),
+                    (-0.45, -0.6),
+                    (0.45, -0.6),
+                    (1.0, 0.0),
+                    (0.45, 0.6),
+                    (-0.45, 0.6),
+                ],
+                col,
+            );
+            scirc(0.0, 0.0, 0.26, bg);
+        }
+        Glyph::Check => {
+            scirc(0.0, 0.0, 0.95, col);
+            p.add(egui::Shape::line(
+                vec![pt(-0.45, 0.05), pt(-0.15, 0.35), pt(0.5, -0.3)],
+                egui::Stroke::new(h * 0.24, bg),
+            ));
         }
     }
 }
@@ -223,15 +285,17 @@ fn nav_item(ui: &mut egui::Ui, current: Tab, target: Tab, g: Glyph, label: &str)
     if ui.is_rect_visible(rect) {
         let acc = accent(ui);
         let p = ui.painter().with_clip_rect(rect);
-        if selected {
-            p.rect_filled(rect.shrink(1.0), 7.0, acc.gamma_multiply(0.18));
+        let pill = if selected {
+            Some(acc.gamma_multiply(0.18))
         } else if hovered {
-            p.rect_filled(
-                rect.shrink(1.0),
-                7.0,
-                ui.visuals().faint_bg_color.gamma_multiply(1.4),
-            );
+            Some(ui.visuals().faint_bg_color.gamma_multiply(1.4))
+        } else {
+            None
+        };
+        if let Some(fill) = pill {
+            p.rect_filled(rect.shrink(1.0), 7.0, fill);
         }
+        let bg = pill.unwrap_or(ui.visuals().panel_fill);
         let col = if selected {
             acc
         } else if hovered {
@@ -242,9 +306,10 @@ fn nav_item(ui: &mut egui::Ui, current: Tab, target: Tab, g: Glyph, label: &str)
         paint_glyph(
             &p,
             egui::pos2(rect.min.x + 16.0, rect.center().y),
-            7.0,
+            7.5,
             g,
             col,
+            bg,
         );
         p.text(
             egui::pos2(rect.min.x + 32.0, rect.center().y),
@@ -432,7 +497,7 @@ fn tool_tile(
 
         let icon_c = rect.min + egui::vec2(32.0, 30.0);
         p.circle_filled(icon_c, 15.0, accent.gamma_multiply(0.14));
-        paint_glyph(&p, icon_c, 8.0, icon, accent);
+        paint_glyph(&p, icon_c, 8.0, icon, accent, fill);
         p.text(
             rect.min + egui::vec2(58.0, 18.0),
             egui::Align2::LEFT_TOP,
@@ -730,10 +795,6 @@ impl CleanerApp {
         self.theme_anim.start(from, to, now);
         self.settings.theme = new_theme;
         self.settings.save();
-        // Rebuild the app icon so its background follows the theme.
-        ctx.send_viewport_cmd(egui::ViewportCommand::Icon(Some(
-            themes::generate_icon(new_theme),
-        )));
         self.add_log(&format!("Theme changed to {}", new_theme.label()));
     }
 
@@ -1463,6 +1524,7 @@ impl CleanerApp {
                     7.5,
                     Glyph::Clock,
                     accent(ui),
+                    ui.visuals().faint_bg_color,
                 );
                 if ui
                     .checkbox(&mut self.settings.schedule_enabled, "Run on a schedule")
@@ -1775,6 +1837,20 @@ impl CleanerApp {
             }
             ui.add_space(4.0);
 
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("Filter:").weak().small());
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.custom.filter)
+                        .hint_text("type to filter results")
+                        .desired_width(220.0),
+                );
+                if !self.custom.filter.is_empty() && ui.small_button("Clear").clicked() {
+                    self.custom.filter.clear();
+                }
+            });
+            ui.add_space(4.0);
+
+            let filter = self.custom.filter.to_lowercase();
             let files = &self.custom.matched_files;
             let selected = &mut self.custom.selected;
             egui::ScrollArea::vertical()
@@ -1785,7 +1861,13 @@ impl CleanerApp {
                         empty_state(ui, "Nothing here yet — run a scan.");
                         return;
                     }
-                    for f in files {
+                    for f in files.iter().filter(|f| {
+                        filter.is_empty()
+                            || f.path
+                                .to_string_lossy()
+                                .to_lowercase()
+                                .contains(&filter)
+                    }) {
                         ui.horizontal(|ui| {
                             let mut on = selected.contains(&f.path);
                             if ui.checkbox(&mut on, "").changed() {
@@ -1884,6 +1966,22 @@ impl CleanerApp {
             ));
             ui.add_space(4.0);
 
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("Filter:").weak().small());
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.duplicates.filter)
+                        .hint_text("type to filter results")
+                        .desired_width(220.0),
+                );
+                if !self.duplicates.filter.is_empty()
+                    && ui.small_button("Clear").clicked()
+                {
+                    self.duplicates.filter.clear();
+                }
+            });
+            ui.add_space(4.0);
+
+            let filter = self.duplicates.filter.to_lowercase();
             let groups = &self.duplicates.groups;
             let selected = &mut self.duplicates.selected_files;
             let mut changed = false;
@@ -1896,7 +1994,14 @@ impl CleanerApp {
                         empty_state(ui, "No duplicate groups found yet — run a scan.");
                         return;
                     }
-                    for group in groups {
+                    for group in groups.iter().filter(|g| {
+                        filter.is_empty()
+                            || g.files.iter().any(|f| {
+                                f.to_string_lossy()
+                                    .to_lowercase()
+                                    .contains(&filter)
+                            })
+                    }) {
                         ui.collapsing(
                             format!(
                                 "{} files · {} each · {}",
@@ -2029,6 +2134,22 @@ impl CleanerApp {
             ));
             ui.add_space(4.0);
 
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("Filter:").weak().small());
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.large_files.filter)
+                        .hint_text("type to filter results")
+                        .desired_width(220.0),
+                );
+                if !self.large_files.filter.is_empty()
+                    && ui.small_button("Clear").clicked()
+                {
+                    self.large_files.filter.clear();
+                }
+            });
+            ui.add_space(4.0);
+
+            let filter = self.large_files.filter.to_lowercase();
             let files = &self.large_files.files;
             let selected = &mut self.large_files.selected;
             egui::ScrollArea::vertical()
@@ -2039,7 +2160,13 @@ impl CleanerApp {
                         empty_state(ui, "No large files found yet — run a scan.");
                         return;
                     }
-                    for f in files {
+                    for f in files.iter().filter(|f| {
+                        filter.is_empty()
+                            || f.path
+                                .to_string_lossy()
+                                .to_lowercase()
+                                .contains(&filter)
+                    }) {
                         ui.horizontal(|ui| {
                             let mut on = selected.contains(&f.path);
                             if ui.checkbox(&mut on, "").changed() {
@@ -2556,14 +2683,35 @@ impl eframe::App for CleanerApp {
                     ui.add_space(10.0);
                     ui.horizontal(|ui| {
                         ui.add_space(10.0);
-                        if self.settings.dry_run {
-                            ui.colored_label(warn_color(), "● Dry run on");
+                        let (r, _) = ui.allocate_exact_size(
+                            egui::vec2(110.0, 18.0),
+                            egui::Sense::hover(),
+                        );
+                        let (col, g, txt) = if self.settings.dry_run {
+                            (warn_color(), Glyph::Eye, "Dry run on")
                         } else {
-                            ui.colored_label(
+                            (
                                 egui::Color32::from_rgb(0x4C, 0xAF, 0x50),
-                                "● Live mode",
-                            );
-                        }
+                                Glyph::Check,
+                                "Live mode",
+                            )
+                        };
+                        let p = ui.painter().with_clip_rect(r);
+                        paint_glyph(
+                            &p,
+                            egui::pos2(r.min.x + 8.0, r.center().y),
+                            6.5,
+                            g,
+                            col,
+                            ui.visuals().panel_fill,
+                        );
+                        p.text(
+                            egui::pos2(r.min.x + 20.0, r.center().y),
+                            egui::Align2::LEFT_CENTER,
+                            txt,
+                            egui::FontId::proportional(11.5),
+                            col,
+                        );
                     });
                 });
             });

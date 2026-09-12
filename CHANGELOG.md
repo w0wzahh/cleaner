@@ -14,6 +14,21 @@ Things planned for the next release. Nothing here is final yet.
 
 ---
 
+## [2.7.1] — 2026-09-12
+
+### Added
+- **Results filter box** on Custom Clean, Duplicates, and Large Files — type
+  a substring to narrow down the list.
+- Proper icons for the status indicator (eye = dry run, check = live).
+
+### Changed
+- **App icon background is now fully transparent** — just the broom and
+  sparkles, no tile, so it sits cleanly on any taskbar.
+- Sidebar/tile icons redrawn as filled silhouettes — crisper and more
+  professional than the first hand-drawn set.
+
+---
+
 ## [2.7.0] — 2026-09-12
 
 New app icon and scheduled scans.
@@ -233,7 +248,8 @@ but it's where all of this started.
 
 ---
 
-[Unreleased]: https://github.com/w0wzahh/cleaner/compare/v2.7.0...HEAD
+[Unreleased]: https://github.com/w0wzahh/cleaner/compare/v2.7.1...HEAD
+[2.7.1]: https://github.com/w0wzahh/cleaner/compare/v2.7.0...v2.7.1
 [2.7.0]: https://github.com/w0wzahh/cleaner/compare/v2.6.0...v2.7.0
 [2.6.0]: https://github.com/w0wzahh/cleaner/compare/v2.5.0...v2.6.0
 [2.5.0]: https://github.com/w0wzahh/cleaner/compare/v2.4.1...v2.5.0

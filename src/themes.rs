@@ -249,12 +249,11 @@ pub fn lerp_visuals(a: &egui::Visuals, b: &egui::Visuals, t: f32) -> egui::Visua
 const ICON_RGBA: &[u8] = include_bytes!("../assets/icon.rgba");
 const ICON_SIZE: u32 = 256;
 
-/// Build the window/taskbar icon from the embedded artwork. The artwork's flat
-/// lavender background is recolored to a light tint of the theme's accent, and
-/// the (flattened-black) corner pixels get their alpha restored so the rounded
-/// tile shape survives.
-pub fn generate_icon(theme: Theme) -> Arc<egui::IconData> {
-    let tint = lerp_color(egui::Color32::WHITE, theme.accent(), 0.16);
+/// Build the window/taskbar icon from the embedded artwork. The flat lavender
+/// background and the flattened-black corners become transparent; edge pixels
+/// get a partial alpha and their color is "unblended" from the lavender so the
+/// broom and sparkles keep smooth edges on any taskbar.
+pub fn generate_icon() -> Arc<egui::IconData> {
     let mut rgba = vec![0u8; ICON_RGBA.len()];
 
     for i in 0..(ICON_SIZE * ICON_SIZE) as usize {
@@ -270,32 +269,18 @@ pub fn generate_icon(theme: Theme) -> Arc<egui::IconData> {
             + (b as f32 - 252.0).powi(2))
         .sqrt();
 
-        let (or, og, ob, oa);
-        if d_bg < 45.0 {
-            // Flat background -> theme tint.
-            or = tint.r();
-            og = tint.g();
-            ob = tint.b();
-            oa = 255;
-        } else if sat < 0.14 && mx < 235.0 {
-            // Grayscale ramp between the black corners and the background —
-            // restore alpha so the tile keeps its rounded shape.
-            let a = (mx / 241.0).clamp(0.0, 1.0);
-            or = tint.r();
-            og = tint.g();
-            ob = tint.b();
-            oa = (a * 255.0) as u8;
-        } else {
-            // Artwork (purple broom, orange sparkles) — keep as-is.
-            or = r;
-            og = g;
-            ob = b;
-            oa = 255;
+        // Fully transparent: flattened-black corners, gray AA ramps, and
+        // anything close to the flat background color.
+        if mx < 60.0 || sat < 0.10 || d_bg < 30.0 {
+            continue;
         }
-        rgba[i * 4] = or;
-        rgba[i * 4 + 1] = og;
-        rgba[i * 4 + 2] = ob;
-        rgba[i * 4 + 3] = oa;
+        // Edge pixels: alpha follows distance from the background.
+        let a = (d_bg / 90.0).clamp(0.0, 1.0);
+        let ia = 1.0 - a;
+        rgba[i * 4] = ((r as f32 - 241.0 * ia) / a).clamp(0.0, 255.0) as u8;
+        rgba[i * 4 + 1] = ((g as f32 - 236.0 * ia) / a).clamp(0.0, 255.0) as u8;
+        rgba[i * 4 + 2] = ((b as f32 - 252.0 * ia) / a).clamp(0.0, 255.0) as u8;
+        rgba[i * 4 + 3] = (a * 255.0) as u8;
     }
 
     Arc::new(egui::IconData {

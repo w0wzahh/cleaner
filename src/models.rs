@@ -11,6 +11,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.1] - 2026-09-12
+### Added
+- Results filter box on Custom Clean, Duplicates, and Large Files.
+- Proper status icons (eye = dry run, check = live mode).
+### Changed
+- App icon background is now fully transparent — broom and sparkles only.
+- Sidebar and tile icons redrawn as filled silhouettes.
+
 ## [2.7.0] - 2026-09-12
 ### Added
 - Scheduled scans — run a scan every 1/6/12/24h or weekly while the app is
@@ -200,6 +208,8 @@ pub struct CustomCleanerState {
     pub matched_files: Vec<MatchedFile>,
     pub selected: std::collections::HashSet<std::path::PathBuf>,
     pub total_matched_size: u64,
+    /// Substring filter applied to the results list.
+    pub filter: String,
 }
 
 impl Default for CustomCleanerState {
@@ -215,6 +225,7 @@ impl Default for CustomCleanerState {
             matched_files: Vec::new(),
             selected: std::collections::HashSet::new(),
             total_matched_size: 0,
+            filter: String::new(),
         }
     }
 }
@@ -225,6 +236,8 @@ pub struct DuplicateState {
     pub groups: Vec<DuplicateGroup>,
     pub selected_files: Vec<std::path::PathBuf>,
     pub total_wasted: u64,
+    /// Substring filter applied to the results list.
+    pub filter: String,
 }
 
 impl Default for DuplicateState {
@@ -234,6 +247,7 @@ impl Default for DuplicateState {
             groups: Vec::new(),
             selected_files: Vec::new(),
             total_wasted: 0,
+            filter: String::new(),
         }
     }
 }
@@ -245,6 +259,8 @@ pub struct LargeFilesState {
     pub files: Vec<LargeFile>,
     pub selected: Vec<std::path::PathBuf>,
     pub total_size: u64,
+    /// Substring filter applied to the results list.
+    pub filter: String,
 }
 
 impl Default for LargeFilesState {
@@ -255,6 +271,7 @@ impl Default for LargeFilesState {
             files: Vec::new(),
             selected: Vec::new(),
             total_size: 0,
+            filter: String::new(),
         }
     }
 }
