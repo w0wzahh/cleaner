@@ -8,6 +8,12 @@ use cleaner::themes;
 use eframe::egui;
 
 fn main() -> Result<(), eframe::Error> {
+    // Any command-line argument means headless mode; no args = GUI.
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if !args.is_empty() {
+        std::process::exit(cleaner::cli::run(&args));
+    }
+
     let icon = themes::generate_icon();
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()

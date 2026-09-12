@@ -12,10 +12,32 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Things planned for the next release. Nothing here is final yet.
 
-- Command-line mode for scripting and headless cleanup
 - Scheduled scans (run on a timer in the background)
-- Custom system-clean targets (add your own paths to the list)
-- Per-file selection in the Custom Clean tab
+
+---
+
+## [2.5.0] — 2026-09-12
+
+The "more control" release.
+
+### Added
+- **Per-file selection**: every match in Custom Clean gets a checkbox, with
+  select-all / clear buttons. Clean only touches what you checked.
+- **Custom system targets**: add your own folders to the System Cleaner list
+  (persisted in settings, removable with one click).
+- **Protected paths**: a never-touch list on the Dashboard. Files and folders
+  under a protected path are skipped during scans *and* cleans.
+- **Persistent stats**: files cleaned and space freed now survive restarts.
+- **Folder Sizes tab**: ranks top-level subfolders by size with share bars.
+- **File-type breakdown**: Custom Clean results show which extensions account
+  for the space.
+- **Scan presets**: one-click recipes — Temp & logs, Old files (30d+),
+  Big media (50MB+), Images, Old Downloads.
+- **CLI mode**: `cleaner scan-custom <dir>`, `clean-system --yes`, etc.
+  Run `cleaner help` for the full list — enables Task Scheduler automation.
+
+### Changed
+- Custom Clean deletes only the selected files, not every match.
 
 ---
 

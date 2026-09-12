@@ -28,6 +28,7 @@ pub enum WorkerMessage {
     LargeFiles(Vec<LargeFile>),
     SystemMatched(Vec<MatchedFile>),
     EmptyFolders(Vec<PathBuf>),
+    FolderSizes(Vec<FolderSizeEntry>),
     /// Structured clean result so the UI doesn't have to parse summary strings.
     CleanStats { deleted: u64, freed: u64 },
     Done { summary: String },
@@ -47,6 +48,7 @@ pub fn custom_scan_worker(
     max_size_bytes: u64,
     pattern: String,
     exclude_dirs: String,
+    protected: Vec<String>,
     recursive: bool,
     include_hidden: bool,
     cancel_flag: Arc<AtomicBool>,
@@ -73,11 +75,13 @@ pub fn custom_scan_worker(
         .map(|s| s.trim().trim_start_matches('.').to_lowercase())
         .filter(|s| !s.is_empty())
         .collect();
-    let exclude: Vec<String> = exclude_dirs
+    let mut exclude: Vec<String> = exclude_dirs
         .split(',')
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect();
+    // Protected paths are never even matched.
+    exclude.extend(protected);
 
     let _ = tx.send(WorkerMessage::Log("Scanning files...".to_string()));
     let files = helpers::collect_files(&dir, recursive, include_hidden);
@@ -399,6 +403,92 @@ pub fn empty_folders_worker(
 }
 
 // -----------------------------------------------------------------------------
+// folder size breakdown
+// -----------------------------------------------------------------------------
+
+/// Aggregates sizes by top-level entry under `dir_path` — answers
+/// "which subfolder is eating my disk?".
+pub fn folder_sizes_worker(
+    dir_path: String,
+    cancel_flag: Arc<AtomicBool>,
+    tx: mpsc::Sender<WorkerMessage>,
+) {
+    let dir = PathBuf::from(&dir_path);
+    if !dir.exists() || !dir.is_dir() {
+        let _ = tx.send(WorkerMessage::Error(format!(
+            "Invalid directory: {}",
+            dir.display()
+        )));
+        return;
+    }
+
+    let _ = tx.send(WorkerMessage::Log("Analyzing folder sizes...".to_string()));
+
+    let mut map: HashMap<String, u64> = HashMap::new();
+    let mut total = 0u64;
+    let mut seen = 0usize;
+
+    for entry in WalkDir::new(&dir).follow_links(false) {
+        if cancel_flag.load(Ordering::Relaxed) {
+            let _ = tx.send(WorkerMessage::Cancelled);
+            return;
+        }
+        if let Ok(entry) = entry {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            if let Ok(meta) = fs::metadata(path) {
+                let size = meta.len();
+                let key = path
+                    .strip_prefix(&dir)
+                    .ok()
+                    .and_then(|rel| {
+                        let mut it = rel.components();
+                        let first = it.next()?;
+                        Some(if it.next().is_none() {
+                            "(files in root)".to_string()
+                        } else {
+                            first.as_os_str().to_string_lossy().into_owned()
+                        })
+                    })
+                    .unwrap_or_else(|| "(other)".to_string());
+                *map.entry(key).or_default() += size;
+                total += size;
+                seen += 1;
+                if seen % 5000 == 0 {
+                    let _ = tx.send(WorkerMessage::Log(format!(
+                        "Counted {} files...",
+                        seen
+                    )));
+                }
+            }
+        }
+    }
+
+    let mut entries: Vec<FolderSizeEntry> = map
+        .into_iter()
+        .map(|(name, size)| FolderSizeEntry { name, size })
+        .collect();
+    entries.sort_by(|a, b| b.size.cmp(&a.size));
+    entries.truncate(40);
+
+    let _ = tx.send(WorkerMessage::Log(format!(
+        "Breakdown complete: {} files, {}",
+        seen,
+        helpers::human_size(total)
+    )));
+    let _ = tx.send(WorkerMessage::FolderSizes(entries));
+    let _ = tx.send(WorkerMessage::Done {
+        summary: format!(
+            "Folder size analysis complete. {} files, {} total.",
+            seen,
+            helpers::human_size(total)
+        ),
+    });
+}
+
+// -----------------------------------------------------------------------------
 // cleaning
 // -----------------------------------------------------------------------------
 
@@ -407,12 +497,14 @@ pub fn clean_files(
     use_trash: bool,
     dry_run: bool,
     secure_delete: bool,
+    protected: Vec<String>,
     cancel_flag: Arc<AtomicBool>,
     tx: mpsc::Sender<WorkerMessage>,
 ) {
     let total = files.len();
     let mut deleted = 0;
     let mut errors = 0;
+    let mut skipped = 0;
     let mut freed = 0u64;
 
     for (i, file) in files.iter().enumerate() {
@@ -421,6 +513,15 @@ pub fn clean_files(
             return;
         }
         let _ = tx.send(WorkerMessage::Progress((i + 1) as f32 / total.max(1) as f32));
+
+        if helpers::is_excluded(&file.path, &protected) {
+            skipped += 1;
+            let _ = tx.send(WorkerMessage::Log(format!(
+                "Skipped (protected): {}",
+                file.path.display()
+            )));
+            continue;
+        }
 
         if dry_run {
             let _ = tx.send(WorkerMessage::Log(format!(
@@ -460,19 +561,26 @@ pub fn clean_files(
         }
     }
 
+    let skipped_note = if skipped > 0 {
+        format!(" {} protected skipped.", skipped)
+    } else {
+        String::new()
+    };
     let summary = if dry_run {
         format!(
-            "Dry run complete. Would delete {} files, freeing {}.",
+            "Dry run complete. Would delete {} files, freeing {}.{}",
             deleted,
-            helpers::human_size(freed)
+            helpers::human_size(freed),
+            skipped_note
         )
     } else {
         let _ = tx.send(WorkerMessage::CleanStats { deleted, freed });
         format!(
-            "Cleaning complete. Deleted {} files, freed {}, {} errors.",
+            "Cleaning complete. Deleted {} files, freed {}, {} errors.{}",
             deleted,
             helpers::human_size(freed),
-            errors
+            errors,
+            skipped_note
         )
     };
     let _ = tx.send(WorkerMessage::Done { summary });
@@ -482,12 +590,14 @@ pub fn clean_folders(
     folders: Vec<PathBuf>,
     dry_run: bool,
     use_trash: bool,
+    protected: Vec<String>,
     cancel_flag: Arc<AtomicBool>,
     tx: mpsc::Sender<WorkerMessage>,
 ) {
     let total = folders.len();
     let mut deleted = 0;
     let mut errors = 0;
+    let mut skipped = 0;
 
     let mut sorted = folders;
     sorted.sort_by_key(|p| std::cmp::Reverse(p.components().count()));
@@ -498,6 +608,15 @@ pub fn clean_folders(
             return;
         }
         let _ = tx.send(WorkerMessage::Progress((i + 1) as f32 / total.max(1) as f32));
+
+        if helpers::is_excluded(folder, &protected) {
+            skipped += 1;
+            let _ = tx.send(WorkerMessage::Log(format!(
+                "Skipped (protected): {}",
+                folder.display()
+            )));
+            continue;
+        }
 
         if dry_run {
             let _ = tx.send(WorkerMessage::Log(format!(
@@ -533,10 +652,21 @@ pub fn clean_folders(
         }
     }
 
-    let summary = if dry_run {
-        format!("Dry run complete. Would remove {} empty folders.", deleted)
+    let skipped_note = if skipped > 0 {
+        format!(" {} protected skipped.", skipped)
     } else {
-        format!("Removed {} empty folders, {} errors.", deleted, errors)
+        String::new()
+    };
+    let summary = if dry_run {
+        format!(
+            "Dry run complete. Would remove {} empty folders.{}",
+            deleted, skipped_note
+        )
+    } else {
+        format!(
+            "Removed {} empty folders, {} errors.{}",
+            deleted, errors, skipped_note
+        )
     };
     let _ = tx.send(WorkerMessage::Done { summary });
 }

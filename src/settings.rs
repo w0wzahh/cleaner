@@ -19,6 +19,17 @@ pub struct Settings {
     pub default_dir: String,
     pub github_url: String,
     pub log_file: String,
+    /// User-defined System Cleaner targets.
+    #[serde(default)]
+    pub custom_targets: Vec<crate::models::CustomTarget>,
+    /// Paths that are never deleted — one per line or comma-separated.
+    #[serde(default)]
+    pub protected_paths: String,
+    /// Lifetime counters shown on the dashboard.
+    #[serde(default)]
+    pub total_files_cleaned: u64,
+    #[serde(default)]
+    pub total_space_freed: u64,
 }
 
 impl Default for Settings {
@@ -34,6 +45,10 @@ impl Default for Settings {
             default_dir: home_default_dir(),
             github_url: "https://github.com/w0wzahh".to_string(),
             log_file: "cleaner_history.log".to_string(),
+            custom_targets: Vec::new(),
+            protected_paths: String::new(),
+            total_files_cleaned: 0,
+            total_space_freed: 0,
         }
     }
 }
@@ -70,6 +85,15 @@ impl Settings {
         } else {
             binary_dir().unwrap_or_else(|| PathBuf::from(".")).join("cleaner_history.log")
         }
+    }
+
+    /// Protected paths as a list, split on commas and newlines.
+    pub fn protected_list(&self) -> Vec<String> {
+        self.protected_paths
+            .split(|c| c == ',' || c == '\n')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect()
     }
 }
 

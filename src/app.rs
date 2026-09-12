@@ -3,8 +3,9 @@
 //! Layout: left sidebar navigation, a header bar with the current page title and
 //! global controls, a bottom status bar, and card-based content per tab.
 
+use std::collections::BTreeMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -201,9 +202,13 @@ pub struct CleanerApp {
     pub large_files: LargeFilesState,
     pub system: SystemCleanerState,
     pub empty_folders: EmptyFoldersState,
+    pub folder_sizes: FolderSizesState,
 
     pub storage_disks: Vec<DiskEntry>,
     pub storage_loaded: bool,
+
+    pub new_target_name: String,
+    pub new_target_path: String,
 
     pub total_files_cleaned: u64,
     pub total_space_freed: u64,
@@ -236,8 +241,11 @@ impl Default for CleanerApp {
             large_files: LargeFilesState::default(),
             system: SystemCleanerState::default(),
             empty_folders: EmptyFoldersState::default(),
+            folder_sizes: FolderSizesState::default(),
             storage_disks: Vec::new(),
             storage_loaded: false,
+            new_target_name: String::new(),
+            new_target_path: String::new(),
             total_files_cleaned: 0,
             total_space_freed: 0,
             last_scan_summary: "No scan yet".to_string(),
@@ -248,8 +256,13 @@ impl Default for CleanerApp {
             app.custom.dir_path = d.clone();
             app.duplicates.dir_path = d.clone();
             app.large_files.dir_path = d.clone();
-            app.empty_folders.dir_path = d;
+            app.empty_folders.dir_path = d.clone();
+            app.folder_sizes.dir_path = d;
         }
+        // Restore lifetime counters and user-defined clean targets.
+        app.total_files_cleaned = app.settings.total_files_cleaned;
+        app.total_space_freed = app.settings.total_space_freed;
+        app.rebuild_custom_targets();
         app
     }
 }
@@ -277,6 +290,36 @@ impl CleanerApp {
         {
             let _ = writeln!(file, "{}", line);
         }
+    }
+
+    /// Sync user-defined system-clean targets from settings into the UI list.
+    fn rebuild_custom_targets(&mut self) {
+        self.system.targets.retain(|t| !t.custom);
+        for ct in &self.settings.custom_targets {
+            self.system.targets.push(SystemCleanTarget {
+                name: ct.name.clone(),
+                path: PathBuf::from(&ct.path),
+                description: "Custom target".to_string(),
+                enabled: true,
+                custom: true,
+            });
+        }
+    }
+
+    fn add_custom_target(&mut self) {
+        let name = self.new_target_name.trim().to_string();
+        let path = self.new_target_path.trim().to_string();
+        if name.is_empty() || path.is_empty() {
+            return;
+        }
+        self.settings
+            .custom_targets
+            .push(CustomTarget { name: name.clone(), path });
+        self.rebuild_custom_targets();
+        self.settings.save();
+        self.add_log(&format!("Added custom target: {}", name));
+        self.new_target_name.clear();
+        self.new_target_path.clear();
     }
 }
 
@@ -345,6 +388,7 @@ impl CleanerApp {
         self.scanning = true;
         self.progress = 0.0;
         self.custom.matched_files.clear();
+        self.custom.selected.clear();
         self.custom.total_matched_size = 0;
         self.log.clear();
         self.cancel_flag = Arc::new(AtomicBool::new(false));
@@ -357,12 +401,13 @@ impl CleanerApp {
         let max = self.custom.max_size_bytes;
         let pat = self.custom.pattern.clone();
         let excl = self.custom.exclude_dirs.clone();
+        let protected = self.settings.protected_list();
         let rec = self.settings.recursive;
         let hidden = self.settings.include_hidden;
         self.add_log("Starting custom scan...");
         thread::spawn(move || {
             workers::custom_scan_worker(
-                dir, ext, days, min, max, pat, excl, rec, hidden, cancel, tx,
+                dir, ext, days, min, max, pat, excl, protected, rec, hidden, cancel, tx,
             )
         });
         self.rx = Some(rx);
@@ -456,12 +501,39 @@ impl CleanerApp {
         self.status_toast = 0;
     }
 
+    pub fn start_folder_sizes_scan(&mut self) {
+        if self.busy() {
+            return;
+        }
+        self.settings.save();
+        self.scanning = true;
+        self.progress = 0.0;
+        self.folder_sizes.entries.clear();
+        self.folder_sizes.total = 0;
+        self.log.clear();
+        self.cancel_flag = Arc::new(AtomicBool::new(false));
+        let (tx, rx) = mpsc::channel();
+        let cancel = self.cancel_flag.clone();
+        let dir = self.folder_sizes.dir_path.clone();
+        self.add_log("Starting folder size analysis...");
+        thread::spawn(move || workers::folder_sizes_worker(dir, cancel, tx));
+        self.rx = Some(rx);
+        self.status = "Analyzing folder sizes...".to_string();
+        self.status_toast = 0;
+    }
+
     pub fn start_clean_selected(&mut self) {
         if self.busy() {
             return;
         }
         let files: Vec<MatchedFile> = match self.tab {
-            Tab::CustomClean => self.custom.matched_files.clone(),
+            Tab::CustomClean => self
+                .custom
+                .matched_files
+                .iter()
+                .filter(|f| self.custom.selected.contains(&f.path))
+                .cloned()
+                .collect(),
             Tab::SystemCleaner => self.system.matched_files.clone(),
             Tab::LargeFiles => self
                 .large_files
@@ -486,9 +558,10 @@ impl CleanerApp {
         let use_trash = self.settings.use_trash;
         let dry_run = self.settings.dry_run;
         let secure_delete = self.settings.secure_delete;
+        let protected = self.settings.protected_list();
         self.add_log("Starting cleaning...");
         thread::spawn(move || {
-            workers::clean_files(files, use_trash, dry_run, secure_delete, cancel, tx)
+            workers::clean_files(files, use_trash, dry_run, secure_delete, protected, cancel, tx)
         });
         self.rx = Some(rx);
         self.status = "Cleaning...".to_string();
@@ -511,6 +584,7 @@ impl CleanerApp {
         let use_trash = self.settings.use_trash;
         let dry_run = self.settings.dry_run;
         let secure_delete = self.settings.secure_delete;
+        let protected = self.settings.protected_list();
         let matched: Vec<MatchedFile> = files
             .into_iter()
             .map(|p| {
@@ -520,7 +594,7 @@ impl CleanerApp {
             .collect();
         self.add_log("Starting duplicate cleanup...");
         thread::spawn(move || {
-            workers::clean_files(matched, use_trash, dry_run, secure_delete, cancel, tx)
+            workers::clean_files(matched, use_trash, dry_run, secure_delete, protected, cancel, tx)
         });
         self.rx = Some(rx);
         self.status = "Cleaning duplicates...".to_string();
@@ -542,9 +616,10 @@ impl CleanerApp {
         let cancel = self.cancel_flag.clone();
         let dry_run = self.settings.dry_run;
         let use_trash = self.settings.use_trash;
+        let protected = self.settings.protected_list();
         self.add_log("Removing empty folders...");
         thread::spawn(move || {
-            workers::clean_folders(folders, dry_run, use_trash, cancel, tx)
+            workers::clean_folders(folders, dry_run, use_trash, protected, cancel, tx)
         });
         self.rx = Some(rx);
         self.status = "Removing empty folders...".to_string();
@@ -584,8 +659,12 @@ impl CleanerApp {
     fn prune_after_clean(&mut self) {
         match self.tab {
             Tab::CustomClean => {
-                self.custom.matched_files.clear();
-                self.custom.total_matched_size = 0;
+                let sel = std::mem::take(&mut self.custom.selected);
+                self.custom
+                    .matched_files
+                    .retain(|f| !sel.contains(&f.path));
+                self.custom.total_matched_size =
+                    self.custom.matched_files.iter().map(|f| f.size).sum();
             }
             Tab::SystemCleaner => {
                 self.system.matched_files.clear();
@@ -622,6 +701,8 @@ impl CleanerApp {
                     workers::WorkerMessage::CustomMatched(files) => {
                         self.custom.total_matched_size =
                             files.iter().map(|f| f.size).sum();
+                        self.custom.selected =
+                            files.iter().map(|f| f.path.clone()).collect();
                         self.custom.matched_files = files;
                     }
                     workers::WorkerMessage::Duplicates(groups) => {
@@ -649,9 +730,17 @@ impl CleanerApp {
                     workers::WorkerMessage::EmptyFolders(folders) => {
                         self.empty_folders.folders = folders;
                     }
+                    workers::WorkerMessage::FolderSizes(entries) => {
+                        self.folder_sizes.total =
+                            entries.iter().map(|e| e.size).sum();
+                        self.folder_sizes.entries = entries;
+                    }
                     workers::WorkerMessage::CleanStats { deleted, freed } => {
                         self.total_files_cleaned += deleted;
                         self.total_space_freed += freed;
+                        self.settings.total_files_cleaned += deleted;
+                        self.settings.total_space_freed += freed;
+                        self.settings.save();
                     }
                     workers::WorkerMessage::Done { summary } => {
                         let was_cleaning = self.cleaning;
@@ -736,7 +825,7 @@ impl CleanerApp {
                     ui,
                     "FILES CLEANED",
                     format!("{}", self.total_files_cleaned),
-                    "this session",
+                    "all time",
                 );
             });
             ui.add_space(gap);
@@ -745,7 +834,7 @@ impl CleanerApp {
                     ui,
                     "SPACE FREED",
                     helpers::human_size(self.total_space_freed),
-                    "this session",
+                    "all time",
                 );
             });
             ui.add_space(gap);
@@ -820,6 +909,25 @@ impl CleanerApp {
                     warn_color(),
                     "Dry run is OFF — cleaning will delete files for real.",
                 );
+            }
+            ui.add_space(6.0);
+            ui.label(
+                egui::RichText::new(
+                    "Protected paths — never scanned or deleted (one per line):",
+                )
+                .weak()
+                .small(),
+            );
+            if ui
+                .add(
+                    egui::TextEdit::multiline(&mut self.settings.protected_paths)
+                        .desired_width(f32::INFINITY)
+                        .desired_rows(3)
+                        .hint_text("C:\\Users\\you\\Documents\nD:\\KeepThese"),
+                )
+                .changed()
+            {
+                self.settings.save();
             }
         });
 
@@ -903,21 +1011,85 @@ impl CleanerApp {
                     ui.end_row();
                 });
 
+            ui.add_space(4.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.label(egui::RichText::new("Presets:").weak().small());
+                if ui.small_button("Temp & logs").clicked() {
+                    self.custom.extensions = "tmp,log,bak,dmp".to_string();
+                    self.custom.pattern.clear();
+                    self.custom.older_than_days = 0;
+                    self.custom.min_size_bytes = 0;
+                    self.custom.max_size_bytes = 0;
+                }
+                if ui.small_button("Old files (30d+)").clicked() {
+                    self.custom.older_than_days = 30;
+                }
+                if ui.small_button("Big media (50MB+)").clicked() {
+                    self.custom.extensions =
+                        "mp4,mkv,avi,mov,mp3,flac,wav".to_string();
+                    self.custom.min_size_bytes = 50 * 1024 * 1024;
+                    self.custom.max_size_bytes = 0;
+                    self.custom.pattern.clear();
+                }
+                if ui.small_button("Images").clicked() {
+                    self.custom.extensions =
+                        "png,jpg,jpeg,gif,bmp,webp".to_string();
+                }
+                if ui.small_button("Old Downloads").clicked() {
+                    if let Some(d) = dirs::download_dir() {
+                        self.custom.dir_path = d.display().to_string();
+                    }
+                    self.custom.older_than_days = 30;
+                    self.custom.extensions.clear();
+                    self.custom.pattern.clear();
+                }
+            });
+
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 if primary_button(ui, !busy, "Scan").clicked() {
                     self.start_custom_scan();
                 }
-                let n = self.custom.matched_files.len();
+                if ui
+                    .add_enabled(
+                        !busy && !self.custom.matched_files.is_empty(),
+                        egui::Button::new("Select all"),
+                    )
+                    .clicked()
+                {
+                    self.custom.selected = self
+                        .custom
+                        .matched_files
+                        .iter()
+                        .map(|f| f.path.clone())
+                        .collect();
+                }
+                if ui
+                    .add_enabled(
+                        !busy && !self.custom.selected.is_empty(),
+                        egui::Button::new("Clear"),
+                    )
+                    .clicked()
+                {
+                    self.custom.selected.clear();
+                }
+                let n = self.custom.selected.len();
+                let sel_size: u64 = self
+                    .custom
+                    .matched_files
+                    .iter()
+                    .filter(|f| self.custom.selected.contains(&f.path))
+                    .map(|f| f.size)
+                    .sum();
                 if danger_button(ui, !busy && n > 0, format!("Clean {} files", n))
                     .clicked()
                 {
                     if self.settings.confirm_clean {
-                        self.confirm_title = "Clean matched files?".to_string();
+                        self.confirm_title = "Clean selected files?".to_string();
                         self.confirm_body = format!(
-                            "Delete the {} matched files ({})?",
+                            "Delete the {} selected files ({})?",
                             n,
-                            helpers::human_size(self.custom.total_matched_size)
+                            helpers::human_size(sel_size)
                         );
                         self.confirm_action = Some(ConfirmAction::CleanFiles);
                     } else {
@@ -925,7 +1097,10 @@ impl CleanerApp {
                     }
                 }
                 if ui
-                    .add_enabled(n > 0, egui::Button::new("Export report"))
+                    .add_enabled(
+                        !self.custom.matched_files.is_empty(),
+                        egui::Button::new("Export report"),
+                    )
                     .clicked()
                 {
                     match helpers::export_report(&self.custom.matched_files, "custom") {
@@ -946,12 +1121,83 @@ impl CleanerApp {
 
         card(ui, "Results", |ui| {
             ui.label(format!(
-                "Matched {} files · {}",
+                "Matched {} files · {} · {} selected",
                 self.custom.matched_files.len(),
-                helpers::human_size(self.custom.total_matched_size)
+                helpers::human_size(self.custom.total_matched_size),
+                self.custom.selected.len()
             ));
+
+            // File-type breakdown: which extensions account for the size.
+            if !self.custom.matched_files.is_empty() {
+                let mut by_ext: BTreeMap<String, (u64, u64)> = BTreeMap::new();
+                for f in &self.custom.matched_files {
+                    let ext = f
+                        .path
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .map(|s| s.to_lowercase())
+                        .unwrap_or_else(|| "(no ext)".to_string());
+                    let ent = by_ext.entry(ext).or_default();
+                    ent.0 += 1;
+                    ent.1 += f.size;
+                }
+                let mut ranked: Vec<(String, (u64, u64))> =
+                    by_ext.into_iter().collect();
+                ranked.sort_by(|a, b| b.1 .1.cmp(&a.1 .1));
+                ranked.truncate(10);
+                ui.add_space(4.0);
+                ui.horizontal_wrapped(|ui| {
+                    for (ext, (count, size)) in &ranked {
+                        ui.label(
+                            egui::RichText::new(format!(
+                                ".{} {} · {}",
+                                ext,
+                                count,
+                                helpers::human_size(*size)
+                            ))
+                            .small()
+                            .weak(),
+                        );
+                    }
+                });
+            }
             ui.add_space(4.0);
-            matched_file_rows(ui, &self.custom.matched_files, "custom_scroll");
+
+            let files = &self.custom.matched_files;
+            let selected = &mut self.custom.selected;
+            egui::ScrollArea::vertical()
+                .id_source("custom_scroll")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    if files.is_empty() {
+                        empty_state(ui, "Nothing here yet — run a scan.");
+                        return;
+                    }
+                    for f in files {
+                        ui.horizontal(|ui| {
+                            let mut on = selected.contains(&f.path);
+                            if ui.checkbox(&mut on, "").changed() {
+                                if on {
+                                    selected.insert(f.path.clone());
+                                } else {
+                                    selected.remove(&f.path);
+                                }
+                            }
+                            ui.monospace(f.path.display().to_string());
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.label(
+                                        egui::RichText::new(helpers::human_size(
+                                            f.size,
+                                        ))
+                                        .weak(),
+                                    );
+                                },
+                            );
+                        });
+                    }
+                });
         });
     }
 
@@ -1216,11 +1462,22 @@ impl CleanerApp {
         let busy = self.busy();
 
         card(ui, "Cleaning targets", |ui| {
-            for target in &mut self.system.targets {
+            let mut remove_idx: Option<usize> = None;
+            for (i, target) in self.system.targets.iter_mut().enumerate() {
                 ui.horizontal(|ui| {
                     ui.checkbox(&mut target.enabled, "");
                     ui.vertical(|ui| {
-                        ui.label(egui::RichText::new(&target.name).strong());
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new(&target.name).strong());
+                            if target.custom {
+                                ui.label(
+                                    egui::RichText::new("custom").weak().small(),
+                                );
+                                if ui.small_button("✕").clicked() {
+                                    remove_idx = Some(i);
+                                }
+                            }
+                        });
                         ui.label(
                             egui::RichText::new(&target.description).weak().small(),
                         );
@@ -1234,6 +1491,31 @@ impl CleanerApp {
                 });
                 ui.separator();
             }
+            if let Some(i) = remove_idx {
+                let removed = self.system.targets.remove(i);
+                let path_str = removed.path.display().to_string();
+                self.settings
+                    .custom_targets
+                    .retain(|c| c.path != path_str);
+                self.settings.save();
+                self.add_log(&format!("Removed custom target: {}", removed.name));
+            }
+
+            ui.collapsing("Add a custom target", |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("Name");
+                    ui.text_edit_singleline(&mut self.new_target_name);
+                });
+                dir_picker(ui, &mut self.new_target_path);
+                let ok = !self.new_target_name.trim().is_empty()
+                    && !self.new_target_path.trim().is_empty();
+                if ui
+                    .add_enabled(ok, egui::Button::new("Add target"))
+                    .clicked()
+                {
+                    self.add_custom_target();
+                }
+            });
 
             ui.add_space(8.0);
             ui.horizontal(|ui| {
@@ -1325,6 +1607,70 @@ impl CleanerApp {
                     }
                     for f in &self.empty_folders.folders {
                         ui.monospace(f.display().to_string());
+                    }
+                });
+        });
+    }
+
+    fn draw_folder_sizes(&mut self, ui: &mut egui::Ui) {
+        let busy = self.busy();
+
+        card(ui, "Scan setup", |ui| {
+            dir_picker(ui, &mut self.folder_sizes.dir_path);
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if primary_button(ui, !busy, "Analyze").clicked() {
+                    self.start_folder_sizes_scan();
+                }
+            });
+            ui.label(
+                egui::RichText::new(
+                    "Totals up each top-level subfolder so you can see what's taking the space.",
+                )
+                .weak()
+                .small(),
+            );
+        });
+
+        ui.add_space(10.0);
+
+        card(ui, "Results", |ui| {
+            if self.folder_sizes.entries.is_empty() {
+                empty_state(ui, "No breakdown yet — run an analysis.");
+                return;
+            }
+            ui.label(format!(
+                "{} across {} top-level entries",
+                helpers::human_size(self.folder_sizes.total),
+                self.folder_sizes.entries.len()
+            ));
+            ui.add_space(6.0);
+            let max = self
+                .folder_sizes
+                .entries
+                .first()
+                .map(|e| e.size)
+                .unwrap_or(1)
+                .max(1);
+            let total = self.folder_sizes.total.max(1);
+            egui::ScrollArea::vertical()
+                .id_source("folder_sizes_scroll")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    for e in &self.folder_sizes.entries {
+                        let share = e.size as f32 / max as f32;
+                        let pct = e.size as f64 / total as f64 * 100.0;
+                        ui.add(
+                            egui::ProgressBar::new(share)
+                                .fill(accent(ui))
+                                .text(format!(
+                                    "{} — {} ({:.0}%)",
+                                    e.name,
+                                    helpers::human_size(e.size),
+                                    pct
+                                )),
+                        );
+                        ui.add_space(2.0);
                     }
                 });
         });
@@ -1555,6 +1901,9 @@ impl eframe::App for CleanerApp {
                 if nav_item(ui, self.tab, Tab::Dashboard, "Dashboard") {
                     self.tab = Tab::Dashboard;
                 }
+                if nav_item(ui, self.tab, Tab::FolderSizes, "Folder Sizes") {
+                    self.tab = Tab::FolderSizes;
+                }
                 if nav_item(ui, self.tab, Tab::Storage, "Storage") {
                     self.tab = Tab::Storage;
                 }
@@ -1693,6 +2042,7 @@ impl eframe::App for CleanerApp {
                 Tab::LargeFiles => self.draw_large_files(ui),
                 Tab::SystemCleaner => self.draw_system_cleaner(ui),
                 Tab::EmptyFolders => self.draw_empty_folders(ui),
+                Tab::FolderSizes => self.draw_folder_sizes(ui),
                 Tab::Storage => self.draw_storage(ui),
                 Tab::Changelog => self.draw_changelog(ui),
                 Tab::About => self.draw_about(ui),

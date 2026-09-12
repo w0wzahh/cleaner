@@ -11,6 +11,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2026-09-12
+### Added
+- Per-file checkboxes in Custom Clean — pick exactly what gets deleted.
+- Custom system-clean targets (add your own folders, persisted in settings).
+- Protected paths — a never-touch list enforced in every scan and clean.
+- Persistent lifetime stats (files cleaned / space freed survive restarts).
+- Folder Sizes tab — top-level subfolder size breakdown with share bars.
+- File-type breakdown chips in Custom Clean results.
+- Scan presets: Temp & logs, Old files (30d+), Big media, Images, Old Downloads.
+- Headless CLI mode: scan-*/clean-* commands for scripting and Task Scheduler.
+### Changed
+- Custom Clean now deletes only the selected files, not every match.
+
 ## [2.4.1] - 2026-09-12
 ### Added
 - Sidebar navigation, card-based layout, per-theme accent colors.
@@ -75,6 +88,7 @@ pub enum Tab {
     LargeFiles,
     SystemCleaner,
     EmptyFolders,
+    FolderSizes,
     Storage,
     Changelog,
     About,
@@ -89,6 +103,7 @@ impl Tab {
             Tab::LargeFiles => "Large File Finder",
             Tab::SystemCleaner => "System Cleaner",
             Tab::EmptyFolders => "Empty Folder Cleaner",
+            Tab::FolderSizes => "Folder Sizes",
             Tab::Storage => "Storage Overview",
             Tab::Changelog => "Changelog",
             Tab::About => "About",
@@ -103,6 +118,7 @@ impl Tab {
             Tab::LargeFiles => "Hunt down the biggest space hogs",
             Tab::SystemCleaner => "Clear temp files and caches",
             Tab::EmptyFolders => "Remove empty directories, including cascades",
+            Tab::FolderSizes => "See which subfolders eat the most space",
             Tab::Storage => "Per-drive usage at a glance (read-only)",
             Tab::Changelog => "What's new in Cleaner",
             Tab::About => "Version, links, and files",
@@ -142,6 +158,15 @@ pub struct SystemCleanTarget {
     pub path: std::path::PathBuf,
     pub description: String,
     pub enabled: bool,
+    /// True for user-added targets (removable, persisted in settings).
+    pub custom: bool,
+}
+
+/// A user-defined system-clean target, persisted in settings.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct CustomTarget {
+    pub name: String,
+    pub path: String,
 }
 
 #[derive(Clone, Debug)]
@@ -154,6 +179,7 @@ pub struct CustomCleanerState {
     pub pattern: String,
     pub exclude_dirs: String,
     pub matched_files: Vec<MatchedFile>,
+    pub selected: std::collections::HashSet<std::path::PathBuf>,
     pub total_matched_size: u64,
 }
 
@@ -168,6 +194,7 @@ impl Default for CustomCleanerState {
             pattern: String::new(),
             exclude_dirs: String::new(),
             matched_files: Vec::new(),
+            selected: std::collections::HashSet::new(),
             total_matched_size: 0,
         }
     }
@@ -230,6 +257,7 @@ impl Default for SystemCleanerState {
                 path: dir,
                 description: "Cached data from applications".to_string(),
                 enabled: true,
+                custom: false,
             });
         }
         if let Some(dir) = dirs::data_local_dir() {
@@ -238,6 +266,7 @@ impl Default for SystemCleanerState {
                 path: dir.join("Temp"),
                 description: "Temporary files created by programs".to_string(),
                 enabled: true,
+                custom: false,
             });
         }
         if let Some(dir) = dirs::data_dir() {
@@ -246,6 +275,7 @@ impl Default for SystemCleanerState {
                 path: dir.join("Temp"),
                 description: "Temporary files".to_string(),
                 enabled: false,
+                custom: false,
             });
         }
         if let Ok(temp) = std::env::var("TEMP") {
@@ -254,6 +284,7 @@ impl Default for SystemCleanerState {
                 path: std::path::PathBuf::from(temp),
                 description: "System temporary files".to_string(),
                 enabled: true,
+                custom: false,
             });
         }
         if let Some(home) = dirs::home_dir() {
@@ -262,24 +293,28 @@ impl Default for SystemCleanerState {
                 path: home.join("AppData/Local/Google/Chrome/User Data/Default/Cache"),
                 description: "Google Chrome browser cache".to_string(),
                 enabled: false,
+                custom: false,
             });
             targets.push(SystemCleanTarget {
                 name: "Edge Cache".to_string(),
                 path: home.join("AppData/Local/Microsoft/Edge/User Data/Default/Cache"),
                 description: "Microsoft Edge browser cache".to_string(),
                 enabled: false,
+                custom: false,
             });
             targets.push(SystemCleanTarget {
                 name: "Firefox Cache".to_string(),
                 path: home.join("AppData/Local/Mozilla/Firefox/Profiles"),
                 description: "Firefox browser cache (all profiles)".to_string(),
                 enabled: false,
+                custom: false,
             });
             targets.push(SystemCleanTarget {
                 name: "Thumbnail Cache".to_string(),
                 path: home.join("AppData/Local/Microsoft/Windows/Explorer"),
                 description: "Windows thumbnail cache".to_string(),
                 enabled: false,
+                custom: false,
             });
         }
 
@@ -313,4 +348,28 @@ pub struct DiskEntry {
     pub mount: String,
     pub total: u64,
     pub available: u64,
+}
+
+/// One entry in the folder-size breakdown (a top-level subfolder, or root files).
+#[derive(Clone, Debug)]
+pub struct FolderSizeEntry {
+    pub name: String,
+    pub size: u64,
+}
+
+#[derive(Clone, Debug)]
+pub struct FolderSizesState {
+    pub dir_path: String,
+    pub entries: Vec<FolderSizeEntry>,
+    pub total: u64,
+}
+
+impl Default for FolderSizesState {
+    fn default() -> Self {
+        Self {
+            dir_path: crate::settings::default_dir().to_string(),
+            entries: Vec::new(),
+            total: 0,
+        }
+    }
 }

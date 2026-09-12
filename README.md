@@ -22,7 +22,11 @@ look before you leap.
   are in scope.
 - **Empty folder cleaner** — finds empty directories, including ones that
   only become empty once their children are removed.
+- **Folder sizes** — ranks a folder's subfolders by total size so you can
+  see exactly where the space went.
 - **Storage overview** — per-drive usage bars so you can see what's full.
+- **Command line** — `cleaner scan-custom <dir>`, `cleaner clean-system --yes`
+  and friends, for scripting or Task Scheduler. `cleaner help` lists them all.
 
 Safety, since that's the part that matters:
 
@@ -30,6 +34,7 @@ Safety, since that's the part that matters:
 - Deletion goes to the recycle bin by default; permanent delete is opt-in
 - Every clean asks for confirmation first
 - Optional 3-pass secure erase for files you really want gone
+- A protected-paths list that's never scanned or deleted, period
 - A persistent log records every operation
 
 ## Install
@@ -64,6 +69,9 @@ Cleaner writes `cleaner_settings.json` next to the exe on first run:
 | `default_dir` | Folder the scan tabs start in |
 | `github_url` | Where the About → Open button goes |
 | `log_file` | Path of the persistent history log |
+| `protected_paths` | Folders that are never scanned or deleted |
+| `custom_targets` | Your own entries in the System Cleaner list |
+| `total_files_cleaned` / `total_space_freed` | Lifetime dashboard counters |
 
 ## Building it yourself
 
@@ -78,7 +86,7 @@ development.
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md). Current version is **2.4.1**.
+See [CHANGELOG.md](CHANGELOG.md). Current version is **2.5.0**.
 
 ## License
 
