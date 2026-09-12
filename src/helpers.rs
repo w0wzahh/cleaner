@@ -316,3 +316,77 @@ pub fn scan_empty_folders(dir_path: &Path, cancel_flag: &AtomicBool) -> Option<V
     empty.sort();
     Some(empty)
 }
+
+// -----------------------------------------------------------------------------
+// Windows Task Scheduler — register/unregister the scheduled scan so it can
+// run even while the app is closed. Everything goes through `schtasks.exe`,
+// no extra dependencies.
+// -----------------------------------------------------------------------------
+
+/// Name used for the scheduled task.
+pub const TASK_NAME: &str = "CleanerScheduledScan";
+
+/// Is our scheduled task currently registered?
+pub fn task_registered() -> bool {
+    std::process::Command::new("schtasks")
+        .args(["/Query", "/TN", TASK_NAME])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Build the argument string the task runs with, e.g. `clean-system --yes`.
+/// Honors the same schedule settings the in-app scheduler uses.
+pub fn task_command_args(
+    target_custom: bool,
+    auto_clean: bool,
+    custom_dir: &str,
+) -> String {
+    let mut cmd = match (target_custom, auto_clean) {
+        (false, false) => "scan-system".to_string(),
+        (false, true) => "clean-system --yes".to_string(),
+        (true, false) => format!("scan-custom \"{}\"", custom_dir),
+        (true, true) => format!("clean-custom \"{}\" --yes", custom_dir),
+    };
+    // Scheduled runs must never block on a prompt or touch protected paths.
+    if auto_clean && !cmd.contains("--yes") {
+        cmd.push_str(" --yes");
+    }
+    cmd
+}
+
+/// Register (or overwrite) the scheduled task. `hours` matches the in-app
+/// interval: 1/6/12/24 map to HOURLY, 168 to WEEKLY.
+/// Returns Err with the schtasks output on failure.
+pub fn register_task(hours: u32, args: &str) -> Result<(), String> {
+    let exe = std::env::current_exe()
+        .map_err(|e| format!("can't locate exe: {}", e))?;
+    let tr = format!("\"{}\" {}", exe.display(), args);
+
+    let mut cmd = std::process::Command::new("schtasks");
+    cmd.args(["/Create", "/F", "/TN", TASK_NAME, "/TR", &tr]);
+    if hours >= 168 {
+        cmd.args(["/SC", "WEEKLY"]);
+    } else {
+        cmd.args(["/SC", "HOURLY", "/MO", &hours.max(1).to_string()]);
+    }
+    let out = cmd.output().map_err(|e| e.to_string())?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
+/// Remove the scheduled task. Ok even if it wasn't there.
+pub fn unregister_task() -> Result<(), String> {
+    let out = std::process::Command::new("schtasks")
+        .args(["/Delete", "/F", "/TN", TASK_NAME])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}

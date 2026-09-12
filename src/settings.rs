@@ -25,6 +25,10 @@ pub struct Settings {
     /// Paths that are never deleted — one per line or comma-separated.
     #[serde(default)]
     pub protected_paths: String,
+    /// Folders the duplicate finder ignores — one per line or comma-separated.
+    /// Unlike protected paths these still show up in other scans.
+    #[serde(default)]
+    pub dupe_excludes: String,
     /// Lifetime counters shown on the dashboard.
     #[serde(default)]
     pub total_files_cleaned: u64,
@@ -100,6 +104,7 @@ impl Default for Settings {
             log_file: "cleaner_history.log".to_string(),
             custom_targets: Vec::new(),
             protected_paths: String::new(),
+            dupe_excludes: String::new(),
             total_files_cleaned: 0,
             total_space_freed: 0,
             clean_history: std::collections::BTreeMap::new(),
@@ -157,12 +162,20 @@ impl Settings {
 
     /// Protected paths as a list, split on commas and newlines.
     pub fn protected_list(&self) -> Vec<String> {
-        self.protected_paths
-            .split(|c| c == ',' || c == '\n')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect()
+        split_list(&self.protected_paths)
     }
+
+    /// Duplicate-finder excludes as a list.
+    pub fn dupe_exclude_list(&self) -> Vec<String> {
+        split_list(&self.dupe_excludes)
+    }
+}
+
+fn split_list(s: &str) -> Vec<String> {
+    s.split(|c| c == ',' || c == '\n')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
 }
 
 // -----------------------------------------------------------------------------

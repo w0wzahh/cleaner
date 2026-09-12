@@ -14,6 +14,25 @@ Things planned for the next release. Nothing here is final yet.
 
 ---
 
+## [2.9.0] — 2026-09-12
+
+### Added
+- **Sort options** on Custom Clean, Duplicates, and Large Files results —
+  size or name, either direction, via a combo next to the filter box.
+- **Duplicates exclude list** — folders the duplicate finder skips (one per
+  line), editable from a collapsible in its Scan setup card.
+- **"Run when the app is closed"** — the Scheduler card can register a
+  Windows Task Scheduler entry that runs the same schedule headlessly.
+  The uninstaller removes the task automatically.
+- **System tray** — a tray icon with Show/Quit menu, plus a "To tray"
+  header button that hides the window while the app keeps running.
+
+### Fixed
+- Duplicate scans now honor protected paths (they were only enforced in
+  custom scans and cleans before).
+
+---
+
 ## [2.8.0] — 2026-09-12
 
 The "proper app" release — installer, organized data folder, and a privacy
@@ -279,7 +298,8 @@ but it's where all of this started.
 
 ---
 
-[Unreleased]: https://github.com/w0wzahh/cleaner/compare/v2.8.0...HEAD
+[Unreleased]: https://github.com/w0wzahh/cleaner/compare/v2.9.0...HEAD
+[2.9.0]: https://github.com/w0wzahh/cleaner/compare/v2.8.0...v2.9.0
 [2.8.0]: https://github.com/w0wzahh/cleaner/compare/v2.7.1...v2.8.0
 [2.7.1]: https://github.com/w0wzahh/cleaner/compare/v2.7.0...v2.7.1
 [2.7.0]: https://github.com/w0wzahh/cleaner/compare/v2.6.0...v2.7.0

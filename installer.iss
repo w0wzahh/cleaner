@@ -1,7 +1,7 @@
 ; Cleaner — Inno Setup installer script.
 ; Build with: ISCC.exe installer.iss   (produces dist\Cleaner-Setup-<ver>.exe)
 
-#define AppVersion "2.8.0"
+#define AppVersion "2.9.0"
 
 [Setup]
 AppId={{B8C7A1E2-4F3D-4A5B-9C6E-2D1F0A3B5C7D}
@@ -57,13 +57,17 @@ Filename: "{app}\cleaner.exe"; Description: "Launch Cleaner"; Flags: nowait post
 Type: filesandordirs; Name: "{app}"
 
 [Code]
-// Offer a truly complete uninstall: after removing the program, ask whether
-// the user's data folder (settings, history log, exported reports) should go
-// too. Everything else is already gone at this point.
+// Offer a truly complete uninstall: remove the scheduled task (if the user
+// registered one), then ask whether the data folder (settings, history log,
+// exported reports) should go too.
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  ResultCode: Integer;
 begin
   if CurUninstallStep = usPostUninstall then
   begin
+    Exec('schtasks.exe', '/Delete /F /TN CleanerScheduledScan', '',
+         SW_HIDE, ewWaitUntilTerminated, ResultCode);
     if DirExists(ExpandConstant('{userappdata}\Cleaner')) then
       if MsgBox('Also delete Cleaner''s data folder?' + #13#10 + #13#10 +
                 ExpandConstant('{userappdata}\Cleaner') + #13#10 +

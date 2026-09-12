@@ -11,6 +11,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.0] - 2026-09-12
+### Added
+- Sort options on Custom Clean, Duplicates, and Large Files results.
+- Duplicates exclude list (folders the duplicate finder skips).
+- "Run when the app is closed" — registers a Windows Task Scheduler entry.
+- System tray icon with Show/Quit menu + "To tray" header button.
+### Fixed
+- Duplicate scans now honor protected paths.
+
 ## [2.8.0] - 2026-09-12
 ### Added
 - Windows installer (Inno Setup) — per-user install, no admin prompt,
@@ -170,6 +179,48 @@ pub enum ConfirmAction {
     CleanEmptyFolders,
 }
 
+/// How a results list is ordered. `Name` compares the file name only.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum SortMode {
+    #[default]
+    SizeDesc,
+    SizeAsc,
+    NameAsc,
+    NameDesc,
+}
+
+impl SortMode {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::SizeDesc => "Size (largest first)",
+            Self::SizeAsc => "Size (smallest first)",
+            Self::NameAsc => "Name (A to Z)",
+            Self::NameDesc => "Name (Z to A)",
+        }
+    }
+
+    pub fn all() -> &'static [SortMode] {
+        &[
+            Self::SizeDesc,
+            Self::SizeAsc,
+            Self::NameAsc,
+            Self::NameDesc,
+        ]
+    }
+
+    /// Order two entries by (size, name). The caller supplies both.
+    pub fn compare(&self, a: (u64, &str), b: (u64, &str)) -> std::cmp::Ordering {
+        let ord = match self {
+            Self::SizeDesc => b.0.cmp(&a.0),
+            Self::SizeAsc => a.0.cmp(&b.0),
+            Self::NameAsc => a.1.cmp(b.1),
+            Self::NameDesc => b.1.cmp(a.1),
+        };
+        // Deterministic tie-break so equal sizes/names don't jump around.
+        ord.then_with(|| a.1.cmp(b.1))
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct MatchedFile {
     pub path: std::path::PathBuf,
@@ -220,6 +271,8 @@ pub struct CustomCleanerState {
     pub total_matched_size: u64,
     /// Substring filter applied to the results list.
     pub filter: String,
+    /// Result ordering for the list view.
+    pub sort: SortMode,
 }
 
 impl Default for CustomCleanerState {
@@ -236,6 +289,7 @@ impl Default for CustomCleanerState {
             selected: std::collections::HashSet::new(),
             total_matched_size: 0,
             filter: String::new(),
+            sort: SortMode::default(),
         }
     }
 }
@@ -248,6 +302,8 @@ pub struct DuplicateState {
     pub total_wasted: u64,
     /// Substring filter applied to the results list.
     pub filter: String,
+    /// Group ordering: size compares total reclaimable per group.
+    pub sort: SortMode,
 }
 
 impl Default for DuplicateState {
@@ -258,6 +314,7 @@ impl Default for DuplicateState {
             selected_files: Vec::new(),
             total_wasted: 0,
             filter: String::new(),
+            sort: SortMode::default(),
         }
     }
 }
@@ -271,6 +328,8 @@ pub struct LargeFilesState {
     pub total_size: u64,
     /// Substring filter applied to the results list.
     pub filter: String,
+    /// Result ordering for the list view.
+    pub sort: SortMode,
 }
 
 impl Default for LargeFilesState {
@@ -282,6 +341,7 @@ impl Default for LargeFilesState {
             selected: Vec::new(),
             total_size: 0,
             filter: String::new(),
+            sort: SortMode::default(),
         }
     }
 }

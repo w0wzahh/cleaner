@@ -16,6 +16,9 @@ use eframe::egui;
 use rfd::FileDialog;
 use std::io::Write;
 
+use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
+use tray_icon::{MouseButton, TrayIcon, TrayIconBuilder, TrayIconEvent};
+
 use crate::helpers;
 use crate::models::*;
 use crate::settings;
@@ -25,6 +28,14 @@ use crate::workers;
 // -----------------------------------------------------------------------------
 // shared UI helpers
 // -----------------------------------------------------------------------------
+
+/// Lowercased file name for case-insensitive name sorting.
+fn name_key(p: &Path) -> String {
+    p.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_lowercase()
+}
 
 fn accent(ui: &egui::Ui) -> egui::Color32 {
     ui.visuals().selection.bg_fill
@@ -624,6 +635,15 @@ pub struct CleanerApp {
     pub pending_auto_clean: bool,
     pub initial_theme_applied: bool,
 
+    /// System-tray icon (always present while the app runs).
+    pub tray: Option<TrayIcon>,
+    pub tray_show_item: Option<MenuItem>,
+    pub tray_quit_item: Option<MenuItem>,
+    /// True while the main window is hidden to the tray.
+    pub window_hidden: bool,
+    /// Cached "is the Windows scheduled task registered" state.
+    pub task_registered: Option<bool>,
+
     pub custom: CustomCleanerState,
     pub duplicates: DuplicateState,
     pub large_files: LargeFilesState,
@@ -664,6 +684,11 @@ impl Default for CleanerApp {
             initial_theme_applied: false,
             pending_theme_change: None,
             pending_auto_clean: false,
+            tray: None,
+            tray_show_item: None,
+            tray_quit_item: None,
+            window_hidden: false,
+            task_registered: None,
             custom: CustomCleanerState::default(),
             duplicates: DuplicateState::default(),
             large_files: LargeFilesState::default(),
@@ -691,7 +716,80 @@ impl Default for CleanerApp {
         app.total_files_cleaned = app.settings.total_files_cleaned;
         app.total_space_freed = app.settings.total_space_freed;
         app.rebuild_custom_targets();
+        app.setup_tray();
         app
+    }
+}
+
+impl CleanerApp {
+    /// Create the system-tray icon with a Show/Quit menu. Failure is
+    /// non-fatal — the app works fine without a tray icon.
+    fn setup_tray(&mut self) {
+        let icon = themes::generate_icon();
+        let Ok(tray_icon_img) =
+            tray_icon::Icon::from_rgba(icon.rgba.clone(), icon.width, icon.height)
+        else {
+            return;
+        };
+        let show = MenuItem::new("Show Cleaner", true, None);
+        let quit = MenuItem::new("Quit", true, None);
+        let menu = Menu::new();
+        let _ = menu.append(&show);
+        let _ = menu.append(&PredefinedMenuItem::separator());
+        let _ = menu.append(&quit);
+        if let Ok(tray) = TrayIconBuilder::new()
+            .with_menu(Box::new(menu))
+            .with_tooltip("Cleaner")
+            .with_icon(tray_icon_img)
+            .build()
+        {
+            self.tray = Some(tray);
+            self.tray_show_item = Some(show);
+            self.tray_quit_item = Some(quit);
+        }
+    }
+
+    /// Poll tray-icon and tray-menu events; call once per frame.
+    fn poll_tray(&mut self, ctx: &egui::Context) {
+        if self.tray.is_none() {
+            return;
+        }
+        for event in TrayIconEvent::receiver().try_iter() {
+            if let TrayIconEvent::DoubleClick {
+                button: MouseButton::Left,
+                ..
+            } = event
+            {
+                self.show_window(ctx);
+            }
+        }
+        let show_id = self.tray_show_item.as_ref().map(|i| i.id().clone());
+        let quit_id = self.tray_quit_item.as_ref().map(|i| i.id().clone());
+        for event in MenuEvent::receiver().try_iter() {
+            if Some(&event.id) == show_id.as_ref() {
+                self.show_window(ctx);
+            } else if Some(&event.id) == quit_id.as_ref() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+        }
+    }
+
+    /// Restore the window from the tray.
+    fn show_window(&mut self, ctx: &egui::Context) {
+        self.window_hidden = false;
+        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+    }
+
+    /// Hide the window to the tray.
+    fn hide_to_tray(&mut self, ctx: &egui::Context) {
+        if self.tray.is_none() {
+            self.add_log("Tray icon unavailable on this system.");
+            return;
+        }
+        self.window_hidden = true;
+        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
     }
 }
 
@@ -885,8 +983,11 @@ impl CleanerApp {
         let (tx, rx) = mpsc::channel();
         let cancel = self.cancel_flag.clone();
         let dir = self.duplicates.dir_path.clone();
+        // Protected paths apply everywhere; dupe excludes only here.
+        let mut excludes = self.settings.protected_list();
+        excludes.extend(self.settings.dupe_exclude_list());
         self.add_log("Starting duplicate scan...");
-        thread::spawn(move || workers::duplicates_worker(dir, cancel, tx));
+        thread::spawn(move || workers::duplicates_worker(dir, excludes, cancel, tx));
         self.rx = Some(rx);
         self.status = "Scanning duplicates...".to_string();
         self.status_toast = 0;
@@ -1592,6 +1693,64 @@ impl CleanerApp {
                     self.settings.save();
                 }
             });
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                let registered = self.task_registered.unwrap_or_else(|| {
+                    let r = helpers::task_registered();
+                    self.task_registered = Some(r);
+                    r
+                });
+                let mut want = registered;
+                if ui
+                    .checkbox(&mut want, "also run when the app is closed")
+                    .on_hover_text(
+                        "Registers a Windows Task Scheduler entry (\"CleanerScheduledScan\") that runs the same schedule headlessly, even when Cleaner isn't open. Uncheck to remove it.",
+                    )
+                    .changed()
+                {
+                    if want {
+                        let args = helpers::task_command_args(
+                            self.settings.schedule_target
+                                == crate::settings::ScheduleTarget::Custom,
+                            self.settings.schedule_auto_clean,
+                            &self.custom.dir_path,
+                        );
+                        match helpers::register_task(self.settings.schedule_hours, &args) {
+                            Ok(()) => {
+                                self.task_registered = Some(true);
+                                self.add_log("Windows scheduled task registered.");
+                            }
+                            Err(e) => {
+                                self.task_registered = Some(false);
+                                self.add_log(&format!(
+                                    "Couldn't register scheduled task: {}",
+                                    e
+                                ));
+                            }
+                        }
+                    } else {
+                        match helpers::unregister_task() {
+                            Ok(()) => {
+                                self.task_registered = Some(false);
+                                self.add_log("Windows scheduled task removed.");
+                            }
+                            Err(e) => {
+                                self.add_log(&format!(
+                                    "Couldn't remove scheduled task: {}",
+                                    e
+                                ));
+                            }
+                        }
+                    }
+                }
+                if registered {
+                    ui.label(
+                        egui::RichText::new("(task registered)")
+                            .weak()
+                            .small(),
+                    );
+                }
+            });
             if self.settings.schedule_enabled {
                 let next = if self.settings.schedule_last_run == 0 {
                     "first run on the next check".to_string()
@@ -1870,10 +2029,20 @@ impl CleanerApp {
                 if !self.custom.filter.is_empty() && ui.small_button("Clear").clicked() {
                     self.custom.filter.clear();
                 }
+                ui.separator();
+                ui.label(egui::RichText::new("Sort:").weak().small());
+                egui::ComboBox::from_id_source("custom_sort")
+                    .selected_text(self.custom.sort.label())
+                    .show_ui(ui, |ui| {
+                        for s in SortMode::all() {
+                            ui.selectable_value(&mut self.custom.sort, *s, s.label());
+                        }
+                    });
             });
             ui.add_space(4.0);
 
             let filter = self.custom.filter.to_lowercase();
+            let sort = self.custom.sort;
             let files = &self.custom.matched_files;
             let selected = &mut self.custom.selected;
             egui::ScrollArea::vertical()
@@ -1884,13 +2053,21 @@ impl CleanerApp {
                         empty_state(ui, "Nothing here yet — run a scan.");
                         return;
                     }
-                    for f in files.iter().filter(|f| {
-                        filter.is_empty()
-                            || f.path
-                                .to_string_lossy()
-                                .to_lowercase()
-                                .contains(&filter)
-                    }) {
+                    let mut view: Vec<(&MatchedFile, String)> = files
+                        .iter()
+                        .filter(|f| {
+                            filter.is_empty()
+                                || f.path
+                                    .to_string_lossy()
+                                    .to_lowercase()
+                                    .contains(&filter)
+                        })
+                        .map(|f| (f, name_key(&f.path)))
+                        .collect();
+                    view.sort_by(|a, b| {
+                        sort.compare((a.0.size, a.1.as_str()), (b.0.size, b.1.as_str()))
+                    });
+                    for (f, _) in view {
                         ui.horizontal(|ui| {
                             let mut on = selected.contains(&f.path);
                             if ui.checkbox(&mut on, "").changed() {
@@ -1977,6 +2154,26 @@ impl CleanerApp {
                 .weak()
                 .small(),
             );
+            ui.add_space(6.0);
+            ui.collapsing("Exclude folders from duplicate scans", |ui| {
+                ui.label(
+                    egui::RichText::new(
+                        "Files under these folders are skipped — one per line or comma-separated.",
+                    )
+                    .weak()
+                    .small(),
+                );
+                if ui
+                    .add(
+                        egui::TextEdit::multiline(&mut self.settings.dupe_excludes)
+                            .desired_rows(2)
+                            .hint_text("e.g. C:\\Users\\you\\SyncedFolder"),
+                    )
+                    .changed()
+                {
+                    self.settings.save();
+                }
+            });
         });
 
         ui.add_space(10.0);
@@ -2001,10 +2198,20 @@ impl CleanerApp {
                 {
                     self.duplicates.filter.clear();
                 }
+                ui.separator();
+                ui.label(egui::RichText::new("Sort:").weak().small());
+                egui::ComboBox::from_id_source("dup_sort")
+                    .selected_text(self.duplicates.sort.label())
+                    .show_ui(ui, |ui| {
+                        for s in SortMode::all() {
+                            ui.selectable_value(&mut self.duplicates.sort, *s, s.label());
+                        }
+                    });
             });
             ui.add_space(4.0);
 
             let filter = self.duplicates.filter.to_lowercase();
+            let sort = self.duplicates.sort;
             let groups = &self.duplicates.groups;
             let selected = &mut self.duplicates.selected_files;
             let mut changed = false;
@@ -2017,14 +2224,37 @@ impl CleanerApp {
                         empty_state(ui, "No duplicate groups found yet — run a scan.");
                         return;
                     }
-                    for group in groups.iter().filter(|g| {
-                        filter.is_empty()
-                            || g.files.iter().any(|f| {
-                                f.to_string_lossy()
-                                    .to_lowercase()
-                                    .contains(&filter)
-                            })
-                    }) {
+                    let mut view: Vec<(&DuplicateGroup, String)> = groups
+                        .iter()
+                        .filter(|g| {
+                            filter.is_empty()
+                                || g.files.iter().any(|f| {
+                                    f.to_string_lossy()
+                                        .to_lowercase()
+                                        .contains(&filter)
+                                })
+                        })
+                        .map(|g| {
+                            (
+                                g,
+                                g.files
+                                    .first()
+                                    .map(|f| name_key(f))
+                                    .unwrap_or_default(),
+                            )
+                        })
+                        .collect();
+                    view.sort_by(|a, b| {
+                        // "Size" for a group = total reclaimable bytes.
+                        let wasted = |g: &DuplicateGroup| {
+                            g.size * (g.files.len().saturating_sub(1)) as u64
+                        };
+                        sort.compare(
+                            (wasted(a.0), a.1.as_str()),
+                            (wasted(b.0), b.1.as_str()),
+                        )
+                    });
+                    for (group, _) in view {
                         ui.collapsing(
                             format!(
                                 "{} files · {} each · {}",
@@ -2169,10 +2399,20 @@ impl CleanerApp {
                 {
                     self.large_files.filter.clear();
                 }
+                ui.separator();
+                ui.label(egui::RichText::new("Sort:").weak().small());
+                egui::ComboBox::from_id_source("large_sort")
+                    .selected_text(self.large_files.sort.label())
+                    .show_ui(ui, |ui| {
+                        for s in SortMode::all() {
+                            ui.selectable_value(&mut self.large_files.sort, *s, s.label());
+                        }
+                    });
             });
             ui.add_space(4.0);
 
             let filter = self.large_files.filter.to_lowercase();
+            let sort = self.large_files.sort;
             let files = &self.large_files.files;
             let selected = &mut self.large_files.selected;
             egui::ScrollArea::vertical()
@@ -2183,13 +2423,21 @@ impl CleanerApp {
                         empty_state(ui, "No large files found yet — run a scan.");
                         return;
                     }
-                    for f in files.iter().filter(|f| {
-                        filter.is_empty()
-                            || f.path
-                                .to_string_lossy()
-                                .to_lowercase()
-                                .contains(&filter)
-                    }) {
+                    let mut view: Vec<(&LargeFile, String)> = files
+                        .iter()
+                        .filter(|f| {
+                            filter.is_empty()
+                                || f.path
+                                    .to_string_lossy()
+                                    .to_lowercase()
+                                    .contains(&filter)
+                        })
+                        .map(|f| (f, name_key(&f.path)))
+                        .collect();
+                    view.sort_by(|a, b| {
+                        sort.compare((a.0.size, a.1.as_str()), (b.0.size, b.1.as_str()))
+                    });
+                    for (f, _) in view {
                         ui.horizontal(|ui| {
                             let mut on = selected.contains(&f.path);
                             if ui.checkbox(&mut on, "").changed() {
@@ -2655,10 +2903,16 @@ impl eframe::App for CleanerApp {
 
         self.update_theme_animation(ctx);
         self.poll_messages(ctx);
+        self.poll_tray(ctx);
         self.maybe_run_scheduled();
-        if self.settings.schedule_enabled {
-            // Wake up periodically so due scans fire even when idle.
-            ctx.request_repaint_after(std::time::Duration::from_secs(30));
+        if self.settings.schedule_enabled || self.window_hidden {
+            // Wake up periodically so due scans fire and tray events get
+            // polled even while idle or hidden.
+            ctx.request_repaint_after(std::time::Duration::from_secs(if self.window_hidden {
+                1
+            } else {
+                30
+            }));
         }
 
         if self.status_toast > 0 {
@@ -2789,6 +3043,16 @@ impl eframe::App for CleanerApp {
                         self.settings.save();
                         self.add_log("Settings saved.");
                     }
+                    if self.tray.is_some()
+                        && ui
+                            .button("To tray")
+                            .on_hover_text(
+                                "Hide the window — Cleaner keeps running in the system tray. Double-click the tray icon to bring it back.",
+                            )
+                            .clicked()
+                    {
+                        self.hide_to_tray(ctx);
+                    }
                     ui.label("Theme:");
                     let mut new_theme: Option<themes::Theme> = None;
                     egui::ComboBox::from_id_source("theme_combo")
@@ -2916,5 +3180,12 @@ impl eframe::App for CleanerApp {
                 self.handle_confirm();
             }
         }
+    }
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        // Make sure the tray icon disappears instead of lingering.
+        self.tray.take();
+        self.tray_show_item.take();
+        self.tray_quit_item.take();
     }
 }

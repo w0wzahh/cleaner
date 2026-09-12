@@ -1,6 +1,6 @@
 [package]
 name = "cleaner"
-version = "2.8.0"
+version = "2.9.0"
 edition = "2021"
 
 [lib]
@@ -24,6 +24,7 @@ sha2 = "0.10"
 dirs = "5"
 sysinfo = "0.30"
 open = "4"
+tray-icon = "0.25.0"
 
 [build-dependencies]
 embed-resource = "3.0.11"

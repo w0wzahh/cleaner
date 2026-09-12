@@ -26,7 +26,12 @@ look before you leap.
   see exactly where the space went.
 - **Storage overview** — per-drive usage bars so you can see what's full.
 - **Scheduled scans** — run a scan every hour, 6/12/24 hours, or weekly while
-  the app is open, with an optional auto-clean afterwards.
+  the app is open, with an optional auto-clean afterwards. Can also register
+  a Windows Task Scheduler entry so scans run even when the app is closed.
+- **System tray** — "To tray" hides the window; Cleaner keeps running (and
+  keeps its schedule) in the tray. Double-click the icon to bring it back.
+- **Sortable results** — order results by size or name on the Custom Clean,
+  Duplicates, and Large Files tabs.
 - **Command line** — `cleaner scan-custom <dir>`, `cleaner clean-system --yes`
   and friends, for scripting or Task Scheduler. `cleaner help` lists them all.
 
@@ -44,19 +49,20 @@ accounts. You can check — the source is right here.
 
 ## Install
 
-**Installer (recommended):** grab `Cleaner-Setup-2.8.0.exe` from the
+**Installer (recommended):** grab `Cleaner-Setup-2.9.0.exe` from the
 [Releases page](https://github.com/w0wzahh/cleaner/releases) and run it. It
 installs per-user (no admin prompt), adds a Start Menu shortcut, and
 registers a proper uninstaller.
 
-**Portable zip:** grab `cleaner-v2.8.0-windows-x64.zip` instead, unzip
+**Portable zip:** grab `cleaner-v2.9.0-windows-x64.zip` instead, unzip
 anywhere, run `cleaner.exe`.
 
 ## Uninstalling
 
 Settings → Apps → Cleaner → Uninstall, or "Uninstall Cleaner" in the Start
-Menu folder. It removes the whole program folder and then asks if you want
-the data folder gone too — say yes and there's genuinely nothing left.
+Menu folder. It removes the whole program folder, deletes the scheduled
+task if you registered one, and then asks if you want the data folder gone
+too — say yes and there's genuinely nothing left.
 
 ## Using it
 
@@ -97,6 +103,7 @@ The About tab has an "Open data folder" button if you ever want to look.
 | `github_url` | Where the About → Open button goes |
 | `log_file` | Path of the persistent history log |
 | `protected_paths` | Folders that are never scanned or deleted |
+| `dupe_excludes` | Folders the duplicate finder skips |
 | `custom_targets` | Your own entries in the System Cleaner list |
 | `total_files_cleaned` / `total_space_freed` | Lifetime dashboard counters |
 
@@ -116,7 +123,7 @@ then run `ISCC.exe installer.iss` — the setup lands in `dist\`.
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md). Current version is **2.8.0**.
+See [CHANGELOG.md](CHANGELOG.md). Current version is **2.9.0**.
 
 ## License
 

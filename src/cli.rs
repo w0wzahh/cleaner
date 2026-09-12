@@ -275,8 +275,10 @@ pub fn run(args: &[String]) -> i32 {
                     return 2;
                 }
             };
+            let mut excludes = settings.protected_list();
+            excludes.extend(settings.dupe_exclude_list());
             let msgs = run_and_collect(move |tx, cancel| {
-                workers::duplicates_worker(dir, cancel, tx)
+                workers::duplicates_worker(dir, excludes, cancel, tx)
             });
             let groups: Vec<DuplicateGroup> = msgs
                 .iter()

@@ -157,6 +157,7 @@ pub fn custom_scan_worker(
 
 pub fn duplicates_worker(
     dir_path: String,
+    excludes: Vec<String>,
     cancel_flag: Arc<AtomicBool>,
     tx: mpsc::Sender<WorkerMessage>,
 ) {
@@ -173,6 +174,7 @@ pub fn duplicates_worker(
 
     let mut size_map: HashMap<u64, Vec<PathBuf>> = HashMap::new();
     let mut total_files = 0;
+    let mut skipped_excluded = 0u64;
 
     for entry in WalkDir::new(&dir).follow_links(false) {
         if cancel_flag.load(Ordering::Relaxed) {
@@ -182,6 +184,10 @@ pub fn duplicates_worker(
         if let Ok(entry) = entry {
             let path = entry.path();
             if path.is_file() {
+                if helpers::is_excluded(path, &excludes) {
+                    skipped_excluded += 1;
+                    continue;
+                }
                 if let Ok(meta) = fs::metadata(path) {
                     // Zero-byte files all hash identically and aren't worth reporting.
                     if meta.len() == 0 {
@@ -195,8 +201,13 @@ pub fn duplicates_worker(
     }
 
     let _ = tx.send(WorkerMessage::Log(format!(
-        "Found {} files, grouping by size...",
-        total_files
+        "Found {} files{}, grouping by size...",
+        total_files,
+        if skipped_excluded > 0 {
+            format!(" ({} skipped — excluded)", skipped_excluded)
+        } else {
+            String::new()
+        }
     )));
     let _ = tx.send(WorkerMessage::Progress(0.1));
 
