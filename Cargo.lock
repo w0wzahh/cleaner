@@ -817,7 +817,7 @@ dependencies = [
 
 [[package]]
 name = "cleaner"
-version = "2.9.1"
+version = "2.9.2"
 dependencies = [
  "chrono",
  "dirs 5.0.1",
@@ -825,6 +825,7 @@ dependencies = [
  "embed-resource",
  "glob",
  "open",
+ "raw-window-handle 0.6.2",
  "rfd",
  "serde",
  "serde_json",

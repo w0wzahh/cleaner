@@ -49,12 +49,12 @@ accounts. You can check — the source is right here.
 
 ## Install
 
-**Installer (recommended):** grab `Cleaner-Setup-2.9.1.exe` from the
+**Installer (recommended):** grab `Cleaner-Setup-2.9.2.exe` from the
 [Releases page](https://github.com/w0wzahh/cleaner/releases) and run it. It
 installs per-user (no admin prompt), adds a Start Menu shortcut, and
 registers a proper uninstaller.
 
-**Portable zip:** grab `cleaner-v2.9.1-windows-x64.zip` instead, unzip
+**Portable zip:** grab `cleaner-v2.9.2-windows-x64.zip` instead, unzip
 anywhere, run `cleaner.exe`.
 
 ## Uninstalling
@@ -123,7 +123,7 @@ then run `ISCC.exe installer.iss` — the setup lands in `dist\`.
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md). Current version is **2.9.1**.
+See [CHANGELOG.md](CHANGELOG.md). Current version is **2.9.2**.
 
 ## License
 

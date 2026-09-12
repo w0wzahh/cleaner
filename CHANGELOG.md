@@ -14,6 +14,21 @@ Things planned for the next release. Nothing here is final yet.
 
 ---
 
+## [2.9.2] — 2026-09-12
+
+### Added
+- **Report a bug** card in About — opens your mail app with a prefilled
+  template addressed to the developer, plus GitHub issues and a
+  "copy version info" button for the report.
+
+### Fixed
+- **Tray restore, for real this time** — egui's viewport command queue is
+  only drained on repaint events, and a hidden window never gets any
+  (egui#3655/#5229). The window is now shown/hidden through user32
+  `ShowWindow` directly on the captured HWND, which works regardless.
+
+---
+
 ## [2.9.1] — 2026-09-12
 
 ### Fixed
@@ -310,7 +325,8 @@ but it's where all of this started.
 
 ---
 
-[Unreleased]: https://github.com/w0wzahh/cleaner/compare/v2.9.1...HEAD
+[Unreleased]: https://github.com/w0wzahh/cleaner/compare/v2.9.2...HEAD
+[2.9.2]: https://github.com/w0wzahh/cleaner/compare/v2.9.1...v2.9.2
 [2.9.1]: https://github.com/w0wzahh/cleaner/compare/v2.9.0...v2.9.1
 [2.9.0]: https://github.com/w0wzahh/cleaner/compare/v2.8.0...v2.9.0
 [2.8.0]: https://github.com/w0wzahh/cleaner/compare/v2.7.1...v2.8.0

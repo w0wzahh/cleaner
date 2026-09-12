@@ -390,3 +390,91 @@ pub fn unregister_task() -> Result<(), String> {
         Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
     }
 }
+
+// -----------------------------------------------------------------------------
+// Win32 window control for the tray feature.
+//
+// egui's viewport command queue is only drained on repaint events, and a
+// hidden window never gets any (egui issues #3655 / #5229) — so hiding to
+// the tray and coming back has to go through user32 directly instead of
+// ViewportCommand::Visible. The HWND is captured once at startup.
+// -----------------------------------------------------------------------------
+
+#[cfg(windows)]
+mod win32_window {
+    use std::sync::atomic::{AtomicIsize, Ordering};
+
+    #[link(name = "user32")]
+    extern "system" {
+        fn ShowWindow(hwnd: isize, cmd: i32) -> i32;
+        fn SetForegroundWindow(hwnd: isize) -> i32;
+        fn IsIconic(hwnd: isize) -> i32;
+        fn PostMessageW(hwnd: isize, msg: u32, wparam: usize, lparam: isize) -> i32;
+    }
+
+    const SW_HIDE: i32 = 0;
+    const SW_SHOW: i32 = 5;
+    const SW_RESTORE: i32 = 9;
+    const WM_CLOSE: u32 = 0x0010;
+
+    static MAIN_HWND: AtomicIsize = AtomicIsize::new(0);
+
+    /// Store the main window handle (called once from the eframe creation cb).
+    pub fn set_main_hwnd(hwnd: isize) {
+        MAIN_HWND.store(hwnd, Ordering::Relaxed);
+    }
+
+    fn hwnd() -> isize {
+        MAIN_HWND.load(Ordering::Relaxed)
+    }
+
+    /// Hide the main window (tray "minimize").
+    pub fn hide_main_window() {
+        let h = hwnd();
+        if h != 0 {
+            unsafe {
+                ShowWindow(h, SW_HIDE);
+            }
+        }
+    }
+
+    /// Restore and focus the main window (tray "Show" / double-click).
+    pub fn show_main_window() {
+        let h = hwnd();
+        if h == 0 {
+            return;
+        }
+        unsafe {
+            if IsIconic(h) != 0 {
+                ShowWindow(h, SW_RESTORE);
+            } else {
+                ShowWindow(h, SW_SHOW);
+            }
+            SetForegroundWindow(h);
+        }
+    }
+
+    /// Ask the app to close gracefully (winit delivers it like a normal X).
+    pub fn close_main_window() {
+        let h = hwnd();
+        if h != 0 {
+            unsafe {
+                PostMessageW(h, WM_CLOSE, 0, 0);
+            }
+        }
+    }
+}
+
+#[cfg(windows)]
+pub use win32_window::*;
+
+/// Non-Windows stubs — the tray button simply hides via egui there and this
+/// code is never exercised on other platforms.
+#[cfg(not(windows))]
+pub fn set_main_hwnd(_hwnd: isize) {}
+#[cfg(not(windows))]
+pub fn hide_main_window() {}
+#[cfg(not(windows))]
+pub fn show_main_window() {}
+#[cfg(not(windows))]
+pub fn close_main_window() {}

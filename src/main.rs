@@ -47,6 +47,20 @@ fn main() -> Result<(), eframe::Error> {
     eframe::run_native(
         "Cleaner",
         options,
-        Box::new(|_cc| Box::new(CleanerApp::default())),
+        Box::new(|cc| {
+            // Stash the Win32 HWND so the tray can show/hide the window
+            // directly — egui viewport commands aren't processed while the
+            // window is invisible (egui#3655/#5229).
+            #[cfg(windows)]
+            {
+                use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+                if let Ok(h) = cc.window_handle() {
+                    if let RawWindowHandle::Win32(w) = h.as_raw() {
+                        cleaner::helpers::set_main_hwnd(w.hwnd.get() as isize);
+                    }
+                }
+            }
+            Box::new(CleanerApp::default())
+        }),
     )
 }

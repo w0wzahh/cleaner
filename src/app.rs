@@ -29,6 +29,20 @@ use crate::workers;
 // shared UI helpers
 // -----------------------------------------------------------------------------
 
+/// Percent-encode a string for use inside a mailto URL.
+fn url_encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            _ => out.push_str(&format!("%{:02X}", b)),
+        }
+    }
+    out
+}
+
 /// Lowercased file name for case-insensitive name sorting.
 fn name_key(p: &Path) -> String {
     p.file_name()
@@ -768,14 +782,13 @@ impl CleanerApp {
                 if event.id == show_id {
                     restore = true;
                 } else if event.id == quit_id {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    // WM_CLOSE → winit close event → clean egui shutdown.
+                    helpers::close_main_window();
                     return;
                 }
             }
             if restore {
-                ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
-                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
-                ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+                helpers::show_main_window();
                 ctx.request_repaint();
             }
             thread::sleep(std::time::Duration::from_millis(50));
@@ -788,7 +801,11 @@ impl CleanerApp {
             self.add_log("Tray icon unavailable on this system.");
             return;
         }
-        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        // Hide via user32, not a viewport command — once hidden, egui never
+        // drains its command queue again (no repaint events), which is also
+        // why the watcher thread restores via ShowWindow directly.
+        helpers::hide_main_window();
+        ctx.request_repaint();
     }
 }
 
@@ -2880,6 +2897,66 @@ impl CleanerApp {
                     reveal_in_explorer(&self.settings.log_path());
                 }
             });
+        });
+
+        ui.add_space(10.0);
+
+        card(ui, "Report a bug", |ui| {
+            ui.label(
+                "Something broken or acting weird? Send a report with what you \
+                 did and what happened — the button below opens your mail app \
+                 with a template already filled in.",
+            );
+            ui.add_space(6.0);
+            ui.horizontal_wrapped(|ui| {
+                if ui
+                    .button("Email a bug report")
+                    .on_hover_text("Opens your default mail app, addressed to the developer")
+                    .clicked()
+                {
+                    let body = format!(
+                        "Cleaner version: {}\nWindows: {}\n\nWhat I did:\n\n\nWhat happened:\n\n\nWhat I expected:\n\n",
+                        env!("CARGO_PKG_VERSION"),
+                        std::env::consts::OS
+                    );
+                    let url = format!(
+                        "mailto:emrebelgrad@gmail.com?subject=Cleaner%20bug%20report%20(v{})&body={}",
+                        env!("CARGO_PKG_VERSION"),
+                        url_encode(&body)
+                    );
+                    let _ = open::that(url);
+                }
+                if ui
+                    .button("Open GitHub issues")
+                    .on_hover_text("File an issue on the repository instead")
+                    .clicked()
+                {
+                    let _ =
+                        open::that("https://github.com/w0wzahh/cleaner/issues");
+                }
+                if ui
+                    .button("Copy version info")
+                    .on_hover_text("Copies version + data-folder path to the clipboard for the report")
+                    .clicked()
+                {
+                    ui.output_mut(|o| {
+                        o.copied_text = format!(
+                            "Cleaner v{} | data folder: {}",
+                            env!("CARGO_PKG_VERSION"),
+                            settings::data_dir().display()
+                        )
+                    });
+                }
+            });
+            ui.add_space(4.0);
+            ui.label(
+                egui::RichText::new(format!(
+                    "Contact: emrebelgrad@gmail.com — attaching {} helps a lot.",
+                    self.settings.log_path().display()
+                ))
+                .weak()
+                .small(),
+            );
         });
 
         ui.add_space(10.0);
