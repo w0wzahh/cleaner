@@ -212,69 +212,130 @@ pub fn lerp_visuals(a: &egui::Visuals, b: &egui::Visuals, t: f32) -> egui::Visua
 }
 
 // -----------------------------------------------------------------------------
-// procedurally generated app icon
+// procedurally generated app icon — a broom on a rounded gradient tile
 // -----------------------------------------------------------------------------
+
+/// Distance from point to segment (capsule SDF helper).
+fn sd_segment(px: f32, py: f32, a: (f32, f32), b: (f32, f32)) -> f32 {
+    let pax = px - a.0;
+    let pay = py - a.1;
+    let bax = b.0 - a.0;
+    let bay = b.1 - a.1;
+    let h = ((pax * bax + pay * bay) / (bax * bax + bay * bay)).clamp(0.0, 1.0);
+    let dx = pax - bax * h;
+    let dy = pay - bay * h;
+    (dx * dx + dy * dy).sqrt()
+}
+
+/// Signed distance to a centered rounded square (negative inside).
+fn sd_round_box(px: f32, py: f32, half: f32, r: f32) -> f32 {
+    let qx = (px - half).abs() - (half - r);
+    let qy = (py - half).abs() - (half - r);
+    let ax = qx.max(0.0);
+    let ay = qy.max(0.0);
+    (ax * ax + ay * ay).sqrt() + qx.max(qy).min(0.0) - r
+}
+
+/// Signed distance to a triangle (positive inside).
+fn tri_dist(px: f32, py: f32, a: (f32, f32), b: (f32, f32), c: (f32, f32)) -> f32 {
+    // Normalize winding so "inside" is always positive.
+    let area = (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0);
+    let (b, c) = if area < 0.0 { (c, b) } else { (b, c) };
+    let edge = |p: (f32, f32), q: (f32, f32)| {
+        let ex = q.0 - p.0;
+        let ey = q.1 - p.1;
+        let len = (ex * ex + ey * ey).sqrt().max(1e-6);
+        (ex * (py - p.1) - ey * (px - p.0)) / len
+    };
+    edge(a, b).min(edge(b, c)).min(edge(c, a))
+}
+
+fn coverage(d: f32) -> f32 {
+    (d + 0.75) / 1.5
+}
 
 pub fn generate_icon() -> Arc<egui::IconData> {
     let size: u32 = 128;
     let s = size as f32;
-    let cx = s / 2.0;
-    let cy = s / 2.0;
-    let r_outer = s / 2.0 - 2.0;
+    let half = s / 2.0;
     let mut rgba = vec![0u8; (size * size * 4) as usize];
+
+    // Broom geometry — handle top-right, bristles fanning down-left.
+    let handle_a = (92.0, 24.0);
+    let handle_b = (56.0, 58.0);
+    let ferrule_a = (50.0, 54.0);
+    let ferrule_b = (62.0, 66.0);
+    let apex = (56.0, 62.0);
+    let base_a = (16.0, 94.0);
+    let base_b = (62.0, 112.0);
+    let base_mid = ((base_a.0 + base_b.0) / 2.0, (base_a.1 + base_b.1) / 2.0);
+    let fan_dir = (base_mid.0 - apex.0, base_mid.1 - apex.1);
+    let fan_len2 = fan_dir.0 * fan_dir.0 + fan_dir.1 * fan_dir.1;
 
     for y in 0..size {
         for x in 0..size {
-            let dx = x as f32 - cx + 0.5;
-            let dy = y as f32 - cy + 0.5;
-            let dist = (dx * dx + dy * dy).sqrt();
+            let px = x as f32 + 0.5;
+            let py = y as f32 + 0.5;
             let idx = ((y * size + x) * 4) as usize;
 
-            if dist > r_outer + 1.5 {
+            // Rounded-square tile, indigo gradient top-left -> bottom-right.
+            let d_bg = sd_round_box(px, py, half, 26.0);
+            let cov_bg = coverage(-d_bg).clamp(0.0, 1.0);
+            if cov_bg <= 0.0 {
                 continue;
             }
+            let t = ((px + py) / (2.0 * s)).clamp(0.0, 1.0);
+            let mut r = 99.0 + (56.0 - 99.0) * t;
+            let mut g = 102.0 + (52.0 - 102.0) * t;
+            let mut b = 241.0 + (160.0 - 241.0) * t;
 
-            let t = (dist / r_outer).clamp(0.0, 1.0);
-            let bg_r = (18.0 + 30.0 * t) as u8;
-            let bg_g = (30.0 + 80.0 * t) as u8;
-            let bg_b = (60.0 + 130.0 * t) as u8;
+            // Bristles: triangle with a light-to-dark straw gradient.
+            let d_tri = tri_dist(px, py, apex, base_a, base_b);
+            let cov_tri = coverage(d_tri).clamp(0.0, 1.0);
+            if cov_tri > 0.0 {
+                let proj = (((px - apex.0) * fan_dir.0 + (py - apex.1) * fan_dir.1)
+                    / fan_len2)
+                    .clamp(0.0, 1.0);
+                let mut br = 242.0 + (212.0 - 242.0) * proj;
+                let mut bg_ = 200.0 + (152.0 - 200.0) * proj;
+                let mut bb = 110.0 + (66.0 - 110.0) * proj;
 
-            let glow = (1.0 - t).clamp(0.0, 1.0);
-            let glow_strength = glow * glow * 0.35;
+                // Thin darker strokes suggest individual bristle strands.
+                for target in [(26.0, 98.0), (38.0, 103.0), (50.0, 108.0)] {
+                    let d_line = sd_segment(px, py, apex, target);
+                    let strand = ((1.4 - d_line) / 1.2).clamp(0.0, 1.0);
+                    br *= 1.0 - 0.22 * strand;
+                    bg_ *= 1.0 - 0.22 * strand;
+                    bb *= 1.0 - 0.22 * strand;
+                }
 
-            let ax = dx.abs();
-            let ay = dy.abs();
-            let star_w = 6.5;
-            let star_len = 46.0;
-            let in_star =
-                (ax < star_w && ay < star_len) || (ay < star_w && ax < star_len);
-            let in_center = (ax + ay) < 14.0;
-
-            let mut r =
-                (bg_r as f32 * (1.0 - glow_strength) + 120.0 * glow_strength) as u8;
-            let mut g =
-                (bg_g as f32 * (1.0 - glow_strength) + 200.0 * glow_strength) as u8;
-            let mut b =
-                (bg_b as f32 * (1.0 - glow_strength) + 255.0 * glow_strength) as u8;
-
-            if in_star || in_center {
-                let brightness = 1.0 - (dist / r_outer).powi(2) * 0.55;
-                let brightness = brightness.clamp(0.0, 1.0);
-                r = (255.0 * brightness + 120.0 * (1.0 - brightness)) as u8;
-                g = (255.0 * brightness + 220.0 * (1.0 - brightness)) as u8;
-                b = (255.0 * brightness + 255.0 * (1.0 - brightness)) as u8;
+                r = r * (1.0 - cov_tri) + br * cov_tri;
+                g = g * (1.0 - cov_tri) + bg_ * cov_tri;
+                b = b * (1.0 - cov_tri) + bb * cov_tri;
             }
 
-            let alpha = if dist > r_outer - 1.5 {
-                ((r_outer - dist) / 1.5 * 255.0).clamp(0.0, 255.0) as u8
-            } else {
-                255
-            };
+            // Ferrule (the band where the handle meets the bristles).
+            let d_fe = sd_segment(px, py, ferrule_a, ferrule_b) - 5.5;
+            let cov_fe = coverage(-d_fe).clamp(0.0, 1.0);
+            if cov_fe > 0.0 {
+                r = r * (1.0 - cov_fe) + 150.0 * cov_fe;
+                g = g * (1.0 - cov_fe) + 152.0 * cov_fe;
+                b = b * (1.0 - cov_fe) + 168.0 * cov_fe;
+            }
 
-            rgba[idx] = r;
-            rgba[idx + 1] = g;
-            rgba[idx + 2] = b;
-            rgba[idx + 3] = alpha;
+            // Wooden handle.
+            let d_ha = sd_segment(px, py, handle_a, handle_b) - 4.5;
+            let cov_ha = coverage(-d_ha).clamp(0.0, 1.0);
+            if cov_ha > 0.0 {
+                r = r * (1.0 - cov_ha) + 158.0 * cov_ha;
+                g = g * (1.0 - cov_ha) + 102.0 * cov_ha;
+                b = b * (1.0 - cov_ha) + 60.0 * cov_ha;
+            }
+
+            rgba[idx] = r.clamp(0.0, 255.0) as u8;
+            rgba[idx + 1] = g.clamp(0.0, 255.0) as u8;
+            rgba[idx + 2] = b.clamp(0.0, 255.0) as u8;
+            rgba[idx + 3] = (cov_bg * 255.0) as u8;
         }
     }
 
