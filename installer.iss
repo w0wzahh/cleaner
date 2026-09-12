@@ -1,7 +1,7 @@
 ; Cleaner — Inno Setup installer script.
 ; Build with: ISCC.exe installer.iss   (produces dist\Cleaner-Setup-<ver>.exe)
 
-#define AppVersion "2.9.2"
+#define AppVersion "2.9.3"
 
 [Setup]
 AppId={{B8C7A1E2-4F3D-4A5B-9C6E-2D1F0A3B5C7D}

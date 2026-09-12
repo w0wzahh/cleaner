@@ -817,7 +817,7 @@ dependencies = [
 
 [[package]]
 name = "cleaner"
-version = "2.9.2"
+version = "2.9.3"
 dependencies = [
  "chrono",
  "dirs 5.0.1",

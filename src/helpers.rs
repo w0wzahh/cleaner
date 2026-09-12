@@ -24,44 +24,97 @@ pub fn file_age_days(path: &Path) -> Option<u64> {
     Some(now.as_secs().saturating_sub(duration.as_secs()) / 86_400)
 }
 
+/// On Windows this checks the FILE_ATTRIBUTE_HIDDEN flag; elsewhere it
+/// falls back to the dot-prefix convention.
 pub fn is_hidden(path: &Path) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if let Ok(meta) = fs::metadata(path) {
+            const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
+            if meta.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0 {
+                return true;
+            }
+        }
+    }
     path.file_name()
         .and_then(|s| s.to_str())
         .map(|s| s.starts_with('.'))
         .unwrap_or(false)
 }
 
-pub fn collect_files(dir: &Path, recursive: bool, include_hidden: bool) -> Vec<PathBuf> {
+/// Iterative file collection — no recursion-depth risk, cancellable, and it
+/// prunes excluded/hidden directories during traversal instead of after.
+pub fn collect_files(
+    dir: &Path,
+    recursive: bool,
+    include_hidden: bool,
+    exclude: &[String],
+    cancel_flag: &AtomicBool,
+) -> Option<Vec<PathBuf>> {
     let mut files = Vec::new();
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                if recursive && (include_hidden || !is_hidden(&path)) {
-                    files.extend(collect_files(&path, recursive, include_hidden));
-                }
-            } else if include_hidden || !is_hidden(&path) {
-                files.push(path);
+    let mut walker = WalkDir::new(dir).follow_links(false);
+    if !recursive {
+        walker = walker.max_depth(1);
+    }
+    for entry in walker.into_iter().filter_entry(|e| {
+        let p = e.path();
+        (include_hidden || !is_hidden(p)) && !is_excluded(p, exclude)
+    }) {
+        if cancel_flag.load(Ordering::Relaxed) {
+            return None;
+        }
+        if let Ok(entry) = entry {
+            if entry.path().is_file() {
+                files.push(entry.path().to_path_buf());
             }
         }
     }
-    files
+    Some(files)
 }
 
+/// Match a glob pattern. If the pattern contains no path separator it is
+/// applied to the file name (the common case: `*.tmp`); otherwise it is
+/// matched against the full path. Case-insensitive like Windows itself.
 pub fn matches_glob(path: &Path, pattern: &str) -> bool {
     if pattern.is_empty() {
         return true;
     }
-    if let Ok(pat) = glob::Pattern::new(pattern) {
-        pat.matches_path(path)
+    let pat = match glob::Pattern::new(&pattern.to_lowercase()) {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
+    if pattern.contains('/') || pattern.contains('\\') {
+        pat.matches_path(path) || pat.matches(&path.to_string_lossy().to_lowercase())
     } else {
-        false
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        pat.matches(&name)
     }
 }
 
+/// Normalize a path for comparison: forward slashes → backslashes, trimmed
+/// trailing separators, lowercased. Windows paths are case-insensitive, so
+/// the exclusion check has to be too or "c:\foo" won't protect "C:\Foo".
+fn norm_path(p: &str) -> String {
+    let mut s = p.replace('/', "\\").to_lowercase();
+    while s.ends_with('\\') && s.len() > 3 {
+        s.pop();
+    }
+    s
+}
+
 pub fn is_excluded(path: &Path, exclude_dirs: &[String]) -> bool {
+    let norm = norm_path(&path.to_string_lossy());
     for ex in exclude_dirs {
-        if !ex.trim().is_empty() && path.starts_with(ex.trim()) {
+        let ex = ex.trim();
+        if ex.is_empty() {
+            continue;
+        }
+        let ex = norm_path(ex);
+        if norm == ex || norm.starts_with(&format!("{}\\", ex)) {
             return true;
         }
     }
@@ -134,8 +187,14 @@ pub fn shred_file(path: &Path) -> Result<(), String> {
         let mut remaining = size;
         while remaining > 0 {
             let n = remaining.min(chunk_size as u64) as usize;
-            for i in 0..n {
-                buf[i] = (rng.next_u64() & 0xFF) as u8;
+            // Fill 8 bytes at a time — a byte-per-RNG-call shred of a big
+            // file is needlessly slow.
+            let mut i = 0;
+            while i < n {
+                let v = rng.next_u64().to_le_bytes();
+                let take = (n - i).min(8);
+                buf[i..i + take].copy_from_slice(&v[..take]);
+                i += take;
             }
             file.write_all(&buf[..n]).map_err(|e| e.to_string())?;
             remaining -= n as u64;
@@ -182,7 +241,7 @@ pub fn full_hash_of_file(path: &Path) -> Option<String> {
 // -----------------------------------------------------------------------------
 
 pub fn export_report(files: &[MatchedFile], label: &str) -> Result<PathBuf, String> {
-    let timestamp = Local::now().format("%Y%m%d_%H%M%S");
+    let timestamp = Local::now().format("%Y%m%d_%H%M%S_%3f");
     let filename = format!("cleaner_report_{}_{}.txt", label, timestamp);
     let mut content = String::new();
     content.push_str("Cleaner Report\n");
@@ -235,12 +294,17 @@ pub fn parse_human_size(s: &str) -> Option<u64> {
 pub fn scan_large_files(
     dir_path: &Path,
     threshold_mb: u64,
+    exclude: &[String],
     cancel_flag: &AtomicBool,
 ) -> Option<Vec<LargeFile>> {
     let threshold = threshold_mb.saturating_mul(1024 * 1024);
     let mut large_files = Vec::new();
 
-    for entry in WalkDir::new(dir_path).follow_links(false) {
+    for entry in WalkDir::new(dir_path)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|e| !is_excluded(e.path(), exclude))
+    {
         if cancel_flag.load(Ordering::Relaxed) {
             return None;
         }
@@ -267,12 +331,17 @@ pub fn scan_large_files(
 // empty folder scan (cascade-aware, bottom-up)
 // -----------------------------------------------------------------------------
 
-pub fn scan_empty_folders(dir_path: &Path, cancel_flag: &AtomicBool) -> Option<Vec<PathBuf>> {
+pub fn scan_empty_folders(
+    dir_path: &Path,
+    exclude: &[String],
+    cancel_flag: &AtomicBool,
+) -> Option<Vec<PathBuf>> {
     let mut all_dirs: Vec<PathBuf> = Vec::new();
 
     for entry in WalkDir::new(dir_path)
         .follow_links(false)
         .into_iter()
+        .filter_entry(|e| !is_excluded(e.path(), exclude))
         .filter_map(|e| e.ok())
     {
         if cancel_flag.load(Ordering::Relaxed) {
@@ -385,10 +454,14 @@ pub fn unregister_task() -> Result<(), String> {
         .output()
         .map_err(|e| e.to_string())?;
     if out.status.success() {
-        Ok(())
-    } else {
-        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+        return Ok(());
     }
+    // "Task doesn't exist" is not a real failure for unregister purposes.
+    let detail = String::from_utf8_lossy(&out.stderr);
+    if !task_registered() {
+        return Ok(());
+    }
+    Err(detail.trim().to_string())
 }
 
 // -----------------------------------------------------------------------------

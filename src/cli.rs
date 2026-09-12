@@ -49,6 +49,10 @@ OTHER FLAGS:
   --yes              Skip the confirmation prompt (for automation)
   --permanent        Delete permanently instead of using the recycle bin
   --secure           3-pass overwrite before deletion
+  --force            Delete for real even if dry run is enabled in settings
+
+NOTE: clean commands honor your saved settings — if "Dry run" is enabled in
+the app, clean-* commands only preview unless you pass --force.
 "#;
 
 /// Spawn a worker on a thread and drain its messages until it finishes.
@@ -125,12 +129,14 @@ fn confirm(prompt: &str) -> bool {
 }
 
 /// Run a file clean after a scan produced `matched`.
+/// Honors `settings.dry_run` — pass --force to override it.
 fn clean_flow(
     matched: Vec<MatchedFile>,
     yes: bool,
     settings: &Settings,
     permanent: bool,
     secure: bool,
+    force: bool,
 ) -> i32 {
     if matched.is_empty() {
         println!("Nothing to clean.");
@@ -142,7 +148,10 @@ fn clean_flow(
         matched.len(),
         helpers::human_size(total)
     );
-    if !yes && !confirm("Delete these files?") {
+    let dry_run = settings.dry_run && !force;
+    if dry_run {
+        println!("Dry run is enabled in settings — previewing only (--force to delete for real).");
+    } else if !yes && !confirm("Delete these files?") {
         println!("Aborted.");
         return 0;
     }
@@ -150,7 +159,7 @@ fn clean_flow(
     let secure = secure || settings.secure_delete;
     let protected = settings.protected_list();
     let msgs = run_and_collect(move |tx, cancel| {
-        workers::clean_files(matched, use_trash, false, secure, protected, cancel, tx)
+        workers::clean_files(matched, use_trash, dry_run, secure, protected, cancel, tx)
     });
     print_done(&msgs)
 }
@@ -161,20 +170,24 @@ fn clean_folders_flow(
     yes: bool,
     settings: &Settings,
     permanent: bool,
+    force: bool,
 ) -> i32 {
     if folders.is_empty() {
         println!("Nothing to remove.");
         return 0;
     }
     println!("Found {} empty folders.", folders.len());
-    if !yes && !confirm("Remove these folders?") {
+    let dry_run = settings.dry_run && !force;
+    if dry_run {
+        println!("Dry run is enabled in settings — previewing only (--force to remove for real).");
+    } else if !yes && !confirm("Remove these folders?") {
         println!("Aborted.");
         return 0;
     }
     let use_trash = settings.use_trash && !permanent;
     let protected = settings.protected_list();
     let msgs = run_and_collect(move |tx, cancel| {
-        workers::clean_folders(folders, false, use_trash, protected, cancel, tx)
+        workers::clean_folders(folders, dry_run, use_trash, protected, cancel, tx)
     });
     print_done(&msgs)
 }
@@ -190,6 +203,7 @@ pub fn run(args: &[String]) -> i32 {
     let yes = has_flag(args, "--yes");
     let permanent = has_flag(args, "--permanent");
     let secure = has_flag(args, "--secure");
+    let force = has_flag(args, "--force");
 
     match args.first().map(|s| s.as_str()) {
         Some("help") | Some("--help") | Some("-h") => {
@@ -199,9 +213,26 @@ pub fn run(args: &[String]) -> i32 {
 
         Some("scan-system") | Some("clean-system") => {
             let clean = args[0].starts_with("clean");
-            let targets = SystemCleanerState::default().targets;
+            // Same targets the GUI uses: built-ins (minus disabled ones)
+            // plus the user's custom targets from settings.
+            let mut targets = SystemCleanerState::default().targets;
+            for t in &mut targets {
+                if settings.disabled_targets.contains(&t.name) {
+                    t.enabled = false;
+                }
+            }
+            for ct in &settings.custom_targets {
+                targets.push(SystemCleanTarget {
+                    name: ct.name.clone(),
+                    path: PathBuf::from(&ct.path),
+                    description: "Custom target".to_string(),
+                    enabled: true,
+                    custom: true,
+                });
+            }
+            let protected = settings.protected_list();
             let msgs = run_and_collect(move |tx, cancel| {
-                workers::system_scan_worker(targets, cancel, tx)
+                workers::system_scan_worker(targets, protected, cancel, tx)
             });
             let files: Vec<MatchedFile> = msgs
                 .iter()
@@ -211,7 +242,7 @@ pub fn run(args: &[String]) -> i32 {
                 })
                 .unwrap_or_default();
             if clean {
-                clean_flow(files, yes, &settings, permanent, secure)
+                clean_flow(files, yes, &settings, permanent, secure, force)
             } else {
                 print_files(&files);
                 print_done(&msgs)
@@ -259,7 +290,7 @@ pub fn run(args: &[String]) -> i32 {
                 })
                 .unwrap_or_default();
             if clean {
-                clean_flow(files, yes, &settings, permanent, secure)
+                clean_flow(files, yes, &settings, permanent, secure, force)
             } else {
                 print_files(&files);
                 print_done(&msgs)
@@ -302,7 +333,7 @@ pub fn run(args: &[String]) -> i32 {
                             .collect::<Vec<_>>()
                     })
                     .collect();
-                clean_flow(matched, yes, &settings, permanent, secure)
+                clean_flow(matched, yes, &settings, permanent, secure, force)
             } else {
                 for g in &groups {
                     println!(
@@ -328,8 +359,9 @@ pub fn run(args: &[String]) -> i32 {
                 }
             };
             let threshold = flag_u64(args, "--min-mb", 100);
+            let protected = settings.protected_list();
             let msgs = run_and_collect(move |tx, cancel| {
-                workers::large_files_worker(dir, threshold, cancel, tx)
+                workers::large_files_worker(dir, threshold, protected, cancel, tx)
             });
             let files: Vec<MatchedFile> = msgs
                 .iter()
@@ -346,7 +378,7 @@ pub fn run(args: &[String]) -> i32 {
                 })
                 .unwrap_or_default();
             if clean {
-                clean_flow(files, yes, &settings, permanent, secure)
+                clean_flow(files, yes, &settings, permanent, secure, force)
             } else {
                 print_files(&files);
                 print_done(&msgs)
@@ -362,8 +394,9 @@ pub fn run(args: &[String]) -> i32 {
                     return 2;
                 }
             };
+            let protected = settings.protected_list();
             let msgs = run_and_collect(move |tx, cancel| {
-                workers::empty_folders_worker(dir, cancel, tx)
+                workers::empty_folders_worker(dir, protected, cancel, tx)
             });
             let folders: Vec<PathBuf> = msgs
                 .iter()
@@ -373,7 +406,7 @@ pub fn run(args: &[String]) -> i32 {
                 })
                 .unwrap_or_default();
             if clean {
-                clean_folders_flow(folders, yes, &settings, permanent)
+                clean_folders_flow(folders, yes, &settings, permanent, force)
             } else {
                 for f in &folders {
                     println!("{}", f.display());

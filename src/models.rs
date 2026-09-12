@@ -11,6 +11,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.3] - 2026-09-12
+### Fixed
+- Full-codebase audit pass. Highlights: the "User Cache" target no longer
+  points at all of AppData\Local; the confirm dialog's "Yes" button works
+  again; protected paths are case-insensitive and enforced in every scan;
+  glob patterns match file names; Windows hidden files are detected;
+  system scans recurse; CLI cleans honor dry run unless --force; results
+  only prune files that were actually deleted; a crashed worker can't
+  leave the app stuck; target checkboxes persist; log rotates at ~1 MB.
+
 ## [2.9.2] - 2026-09-12
 ### Added
 - "Report a bug" card in About — mailto template, GitHub issues link,
@@ -189,7 +199,9 @@ impl Tab {
 
 #[derive(Clone, Copy, Debug)]
 pub enum ConfirmAction {
-    CleanFiles,
+    /// Clean the selected files — carries the tab the dialog was opened on
+    /// so switching tabs while it's up can't clean the wrong list.
+    CleanFiles(Tab),
     CleanDuplicates,
     CleanEmptyFolders,
 }
@@ -372,11 +384,11 @@ impl Default for SystemCleanerState {
     fn default() -> Self {
         let mut targets = Vec::new();
 
-        if let Some(dir) = dirs::cache_dir() {
+        if let Some(dir) = dirs::data_local_dir() {
             targets.push(SystemCleanTarget {
-                name: "User Cache".to_string(),
-                path: dir,
-                description: "Cached data from applications".to_string(),
+                name: "Crash Dumps".to_string(),
+                path: dir.join("CrashDumps"),
+                description: "Crash dump files left by crashed programs".to_string(),
                 enabled: true,
                 custom: false,
             });

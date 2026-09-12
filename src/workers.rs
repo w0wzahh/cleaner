@@ -30,7 +30,8 @@ pub enum WorkerMessage {
     EmptyFolders(Vec<PathBuf>),
     FolderSizes(Vec<FolderSizeEntry>),
     /// Structured clean result so the UI doesn't have to parse summary strings.
-    CleanStats { deleted: u64, freed: u64 },
+    /// `paths` are the items that were actually deleted (for pruning results).
+    CleanStats { deleted: u64, freed: u64, paths: Vec<PathBuf> },
     Done { summary: String },
     Error(String),
     Cancelled,
@@ -84,7 +85,19 @@ pub fn custom_scan_worker(
     exclude.extend(protected);
 
     let _ = tx.send(WorkerMessage::Log("Scanning files...".to_string()));
-    let files = helpers::collect_files(&dir, recursive, include_hidden);
+    let files = match helpers::collect_files(
+        &dir,
+        recursive,
+        include_hidden,
+        &exclude,
+        &cancel_flag,
+    ) {
+        Some(f) => f,
+        None => {
+            let _ = tx.send(WorkerMessage::Cancelled);
+            return;
+        }
+    };
     let total = files.len();
     let _ = tx.send(WorkerMessage::Log(format!("Found {} files", total)));
 
@@ -96,9 +109,6 @@ pub fn custom_scan_worker(
         }
         if i % 10 == 0 || i + 1 == total {
             let _ = tx.send(WorkerMessage::Progress((i + 1) as f32 / total.max(1) as f32));
-        }
-        if helpers::is_excluded(file, &exclude) {
-            continue;
         }
         if !exts.is_empty() {
             let ext = file
@@ -246,8 +256,10 @@ pub fn duplicates_worker(
                     full_map.entry(hash_str).or_default().push(file.clone());
                 }
             }
-            for (hash, full_files) in full_map {
+            for (hash, mut full_files) in full_map {
                 if full_files.len() > 1 {
+                    // Deterministic order so the "kept" file is stable run to run.
+                    full_files.sort();
                     groups.push(DuplicateGroup {
                         hash,
                         files: full_files,
@@ -291,6 +303,7 @@ pub fn duplicates_worker(
 pub fn large_files_worker(
     dir_path: String,
     threshold_mb: u64,
+    protected: Vec<String>,
     cancel_flag: Arc<AtomicBool>,
     tx: mpsc::Sender<WorkerMessage>,
 ) {
@@ -308,13 +321,14 @@ pub fn large_files_worker(
         threshold_mb
     )));
 
-    let large_files = match helpers::scan_large_files(&dir, threshold_mb, &cancel_flag) {
-        Some(files) => files,
-        None => {
-            let _ = tx.send(WorkerMessage::Cancelled);
-            return;
-        }
-    };
+    let large_files =
+        match helpers::scan_large_files(&dir, threshold_mb, &protected, &cancel_flag) {
+            Some(files) => files,
+            None => {
+                let _ = tx.send(WorkerMessage::Cancelled);
+                return;
+            }
+        };
     let total_size: u64 = large_files.iter().map(|f| f.size).sum();
     let _ = tx.send(WorkerMessage::Log(format!(
         "Found {} large files, total {}",
@@ -333,6 +347,7 @@ pub fn large_files_worker(
 
 pub fn system_scan_worker(
     targets: Vec<SystemCleanTarget>,
+    protected: Vec<String>,
     cancel_flag: Arc<AtomicBool>,
     tx: mpsc::Sender<WorkerMessage>,
 ) {
@@ -342,21 +357,26 @@ pub fn system_scan_worker(
             let _ = tx.send(WorkerMessage::Cancelled);
             return;
         }
-        if !target.enabled {
+        if !target.enabled || helpers::is_excluded(&target.path, &protected) {
             continue;
         }
         let _ = tx.send(WorkerMessage::Log(format!("Scanning {} ...", target.name)));
-        if let Ok(entries) = fs::read_dir(&target.path) {
-            for entry in entries.flatten() {
-                if cancel_flag.load(Ordering::Relaxed) {
-                    let _ = tx.send(WorkerMessage::Cancelled);
-                    return;
-                }
+        // Recurse: temp/cache targets keep most of their junk in subfolders.
+        for entry in WalkDir::new(&target.path)
+            .follow_links(false)
+            .into_iter()
+            .filter_entry(|e| !helpers::is_excluded(e.path(), &protected))
+        {
+            if cancel_flag.load(Ordering::Relaxed) {
+                let _ = tx.send(WorkerMessage::Cancelled);
+                return;
+            }
+            if let Ok(entry) = entry {
                 let path = entry.path();
-                if let Ok(meta) = fs::metadata(&path) {
+                if let Ok(meta) = fs::metadata(path) {
                     if meta.is_file() {
                         matched.push(MatchedFile {
-                            path,
+                            path: path.to_path_buf(),
                             size: meta.len(),
                         });
                     }
@@ -382,6 +402,7 @@ pub fn system_scan_worker(
 
 pub fn empty_folders_worker(
     dir_path: String,
+    protected: Vec<String>,
     cancel_flag: Arc<AtomicBool>,
     tx: mpsc::Sender<WorkerMessage>,
 ) {
@@ -396,7 +417,7 @@ pub fn empty_folders_worker(
 
     let _ = tx.send(WorkerMessage::Log("Scanning for empty folders...".to_string()));
 
-    let empty = match helpers::scan_empty_folders(&dir, &cancel_flag) {
+    let empty = match helpers::scan_empty_folders(&dir, &protected, &cancel_flag) {
         Some(folders) => folders,
         None => {
             let _ = tx.send(WorkerMessage::Cancelled);
@@ -517,13 +538,16 @@ pub fn clean_files(
     let mut errors = 0;
     let mut skipped = 0;
     let mut freed = 0u64;
+    let mut deleted_paths = Vec::new();
 
     for (i, file) in files.iter().enumerate() {
         if cancel_flag.load(Ordering::Relaxed) {
             let _ = tx.send(WorkerMessage::Cancelled);
             return;
         }
-        let _ = tx.send(WorkerMessage::Progress((i + 1) as f32 / total.max(1) as f32));
+        if i % 10 == 0 || i + 1 == total {
+            let _ = tx.send(WorkerMessage::Progress((i + 1) as f32 / total.max(1) as f32));
+        }
 
         if helpers::is_excluded(&file.path, &protected) {
             skipped += 1;
@@ -541,6 +565,7 @@ pub fn clean_files(
             )));
             freed += file.size;
             deleted += 1;
+            deleted_paths.push(file.path.clone());
             continue;
         }
 
@@ -556,18 +581,28 @@ pub fn clean_files(
             Ok(_) => {
                 deleted += 1;
                 freed += file.size;
+                deleted_paths.push(file.path.clone());
                 let _ = tx.send(WorkerMessage::Log(format!(
                     "Deleted: {}",
                     file.path.display()
                 )));
             }
             Err(e) => {
-                errors += 1;
-                let _ = tx.send(WorkerMessage::Log(format!(
-                    "Error deleting {}: {}",
-                    file.path.display(),
-                    e
-                )));
+                if !file.path.exists() {
+                    // Already gone — temp files vanish on their own all the
+                    // time; the goal state is reached, so don't scare the
+                    // user with an "error".
+                    deleted += 1;
+                    freed += file.size;
+                    deleted_paths.push(file.path.clone());
+                } else {
+                    errors += 1;
+                    let _ = tx.send(WorkerMessage::Log(format!(
+                        "Error deleting {}: {}",
+                        file.path.display(),
+                        e
+                    )));
+                }
             }
         }
     }
@@ -585,7 +620,11 @@ pub fn clean_files(
             skipped_note
         )
     } else {
-        let _ = tx.send(WorkerMessage::CleanStats { deleted, freed });
+        let _ = tx.send(WorkerMessage::CleanStats {
+            deleted,
+            freed,
+            paths: deleted_paths,
+        });
         format!(
             "Cleaning complete. Deleted {} files, freed {}, {} errors.{}",
             deleted,
@@ -609,6 +648,7 @@ pub fn clean_folders(
     let mut deleted = 0;
     let mut errors = 0;
     let mut skipped = 0;
+    let mut deleted_paths = Vec::new();
 
     let mut sorted = folders;
     sorted.sort_by_key(|p| std::cmp::Reverse(p.components().count()));
@@ -618,7 +658,9 @@ pub fn clean_folders(
             let _ = tx.send(WorkerMessage::Cancelled);
             return;
         }
-        let _ = tx.send(WorkerMessage::Progress((i + 1) as f32 / total.max(1) as f32));
+        if i % 10 == 0 || i + 1 == total {
+            let _ = tx.send(WorkerMessage::Progress((i + 1) as f32 / total.max(1) as f32));
+        }
 
         if helpers::is_excluded(folder, &protected) {
             skipped += 1;
@@ -635,6 +677,21 @@ pub fn clean_folders(
                 folder.display()
             )));
             deleted += 1;
+            deleted_paths.push(folder.clone());
+            continue;
+        }
+
+        // Re-check emptiness: a file may have landed here between the scan
+        // and the clean — never trash a folder that now has contents.
+        let still_empty = fs::read_dir(folder)
+            .map(|mut it| it.next().is_none())
+            .unwrap_or(false);
+        if !still_empty {
+            let _ = tx.send(WorkerMessage::Log(format!(
+                "Skipped (no longer empty): {}",
+                folder.display()
+            )));
+            skipped += 1;
             continue;
         }
 
@@ -647,18 +704,24 @@ pub fn clean_folders(
         match result {
             Ok(_) => {
                 deleted += 1;
+                deleted_paths.push(folder.clone());
                 let _ = tx.send(WorkerMessage::Log(format!(
                     "Removed: {}",
                     folder.display()
                 )));
             }
             Err(e) => {
-                errors += 1;
-                let _ = tx.send(WorkerMessage::Log(format!(
-                    "Error removing {}: {}",
-                    folder.display(),
-                    e
-                )));
+                if !folder.exists() {
+                    deleted += 1;
+                    deleted_paths.push(folder.clone());
+                } else {
+                    errors += 1;
+                    let _ = tx.send(WorkerMessage::Log(format!(
+                        "Error removing {}: {}",
+                        folder.display(),
+                        e
+                    )));
+                }
             }
         }
     }
@@ -674,6 +737,11 @@ pub fn clean_folders(
             deleted, skipped_note
         )
     } else {
+        let _ = tx.send(WorkerMessage::CleanStats {
+            deleted,
+            freed: 0,
+            paths: deleted_paths,
+        });
         format!(
             "Removed {} empty folders, {} errors.{}",
             deleted, errors, skipped_note

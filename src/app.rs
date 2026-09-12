@@ -645,8 +645,10 @@ pub struct CleanerApp {
     pub confirm_body: String,
     pub theme_anim: themes::ThemeAnim,
     pub pending_theme_change: Option<themes::Theme>,
-    /// Set when a scheduled scan should auto-clean once its results arrive.
-    pub pending_auto_clean: bool,
+    /// Which tab a scheduled auto-clean should act on once its scan finishes.
+    pub pending_auto_clean: Option<Tab>,
+    /// Paths the last clean actually deleted (from the worker's CleanStats).
+    pub last_cleaned_paths: Vec<PathBuf>,
     pub initial_theme_applied: bool,
 
     /// System-tray icon (always present while the app runs). The icon handle
@@ -696,7 +698,8 @@ impl Default for CleanerApp {
             theme_anim: themes::ThemeAnim::new(initial_visuals),
             initial_theme_applied: false,
             pending_theme_change: None,
-            pending_auto_clean: false,
+            pending_auto_clean: None,
+            last_cleaned_paths: Vec::new(),
             tray: None,
             tray_setup_done: false,
             task_registered: None,
@@ -783,7 +786,10 @@ impl CleanerApp {
                     restore = true;
                 } else if event.id == quit_id {
                     // WM_CLOSE → winit close event → clean egui shutdown.
+                    // ViewportCommand::Close as a fallback if the HWND was
+                    // never captured.
                     helpers::close_main_window();
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                     return;
                 }
             }
@@ -805,6 +811,8 @@ impl CleanerApp {
         // drains its command queue again (no repaint events), which is also
         // why the watcher thread restores via ShowWindow directly.
         helpers::hide_main_window();
+        // Fallback for the (unlikely) case the HWND was never captured.
+        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
         ctx.request_repaint();
     }
 }
@@ -825,16 +833,24 @@ impl CleanerApp {
             self.status = msg.to_string();
             self.status_toast = 60;
         }
+        let log_path = self.settings.log_path();
+        // Rotate when the log grows past ~1 MB so it can't grow forever.
+        if let Ok(meta) = fs::metadata(&log_path) {
+            if meta.len() > 1_048_576 {
+                let _ = fs::rename(&log_path, log_path.with_extension("old.log"));
+            }
+        }
         if let Ok(mut file) = fs::OpenOptions::new()
             .create(true)
             .append(true)
-            .open(self.settings.log_path())
+            .open(&log_path)
         {
             let _ = writeln!(file, "{}", line);
         }
     }
 
-    /// Sync user-defined system-clean targets from settings into the UI list.
+    /// Sync user-defined system-clean targets from settings into the UI list,
+    /// then re-apply which built-ins the user has unchecked.
     fn rebuild_custom_targets(&mut self) {
         self.system.targets.retain(|t| !t.custom);
         for ct in &self.settings.custom_targets {
@@ -845,6 +861,11 @@ impl CleanerApp {
                 enabled: true,
                 custom: true,
             });
+        }
+        for t in &mut self.system.targets {
+            if !t.custom {
+                t.enabled = !self.settings.disabled_targets.contains(&t.name);
+            }
         }
     }
 
@@ -926,14 +947,16 @@ impl CleanerApp {
         self.settings.schedule_last_run = now;
         self.settings.save();
         self.add_log("Scheduled scan triggered.");
-        self.pending_auto_clean = self.settings.schedule_auto_clean;
+        let auto = self.settings.schedule_auto_clean;
         match self.settings.schedule_target {
             crate::settings::ScheduleTarget::System => {
                 self.tab = Tab::SystemCleaner;
+                self.pending_auto_clean = auto.then_some(Tab::SystemCleaner);
                 self.start_system_scan();
             }
             crate::settings::ScheduleTarget::Custom => {
                 self.tab = Tab::CustomClean;
+                self.pending_auto_clean = auto.then_some(Tab::CustomClean);
                 self.start_custom_scan();
             }
         }
@@ -1025,8 +1048,11 @@ impl CleanerApp {
         let cancel = self.cancel_flag.clone();
         let dir = self.large_files.dir_path.clone();
         let threshold = self.large_files.threshold_mb;
+        let protected = self.settings.protected_list();
         self.add_log("Starting large file scan...");
-        thread::spawn(move || workers::large_files_worker(dir, threshold, cancel, tx));
+        thread::spawn(move || {
+            workers::large_files_worker(dir, threshold, protected, cancel, tx)
+        });
         self.rx = Some(rx);
         self.status = "Scanning large files...".to_string();
         self.status_toast = 0;
@@ -1046,8 +1072,9 @@ impl CleanerApp {
         let (tx, rx) = mpsc::channel();
         let cancel = self.cancel_flag.clone();
         let targets = self.system.targets.clone();
+        let protected = self.settings.protected_list();
         self.add_log("Starting system scan...");
-        thread::spawn(move || workers::system_scan_worker(targets, cancel, tx));
+        thread::spawn(move || workers::system_scan_worker(targets, protected, cancel, tx));
         self.rx = Some(rx);
         self.status = "Scanning system...".to_string();
         self.status_toast = 0;
@@ -1066,8 +1093,9 @@ impl CleanerApp {
         let (tx, rx) = mpsc::channel();
         let cancel = self.cancel_flag.clone();
         let dir = self.empty_folders.dir_path.clone();
+        let protected = self.settings.protected_list();
         self.add_log("Starting empty folder scan...");
-        thread::spawn(move || workers::empty_folders_worker(dir, cancel, tx));
+        thread::spawn(move || workers::empty_folders_worker(dir, protected, cancel, tx));
         self.rx = Some(rx);
         self.status = "Scanning for empty folders...".to_string();
         self.status_toast = 0;
@@ -1094,11 +1122,11 @@ impl CleanerApp {
         self.status_toast = 0;
     }
 
-    pub fn start_clean_selected(&mut self) {
+    pub fn start_clean_selected(&mut self, tab: Tab) {
         if self.busy() {
             return;
         }
-        let files: Vec<MatchedFile> = match self.tab {
+        let files: Vec<MatchedFile> = match tab {
             Tab::CustomClean => self
                 .custom
                 .matched_files
@@ -1205,7 +1233,7 @@ impl CleanerApp {
     pub fn handle_confirm(&mut self) {
         if let Some(action) = self.confirm_action.take() {
             match action {
-                ConfirmAction::CleanFiles => self.start_clean_selected(),
+                ConfirmAction::CleanFiles(tab) => self.start_clean_selected(tab),
                 ConfirmAction::CleanDuplicates => self.start_clean_duplicates(),
                 ConfirmAction::CleanEmptyFolders => self.start_clean_empty_folders(),
             }
@@ -1227,46 +1255,63 @@ impl CleanerApp {
             .sum()
     }
 
-    /// Drop results that were just deleted so the UI doesn't offer them twice.
+    /// Drop results that were actually deleted so the UI doesn't offer them
+    /// twice. Uses the worker's reported paths — files that failed to delete
+    /// stay in the list so they can be retried. Prunes every result list so
+    /// switching tabs mid-clean can't resurrect stale entries.
     fn prune_after_clean(&mut self) {
-        match self.tab {
-            Tab::CustomClean => {
-                let sel = std::mem::take(&mut self.custom.selected);
-                self.custom
-                    .matched_files
-                    .retain(|f| !sel.contains(&f.path));
-                self.custom.total_matched_size =
-                    self.custom.matched_files.iter().map(|f| f.size).sum();
-            }
-            Tab::SystemCleaner => {
-                self.system.matched_files.clear();
-                self.system.total_matched_size = 0;
-            }
-            Tab::LargeFiles => {
-                let sel = std::mem::take(&mut self.large_files.selected);
-                self.large_files.files.retain(|f| !sel.contains(&f.path));
-                self.large_files.total_size =
-                    self.large_files.files.iter().map(|f| f.size).sum();
-            }
-            Tab::Duplicates => {
-                let sel = std::mem::take(&mut self.duplicates.selected_files);
-                for g in &mut self.duplicates.groups {
-                    g.files.retain(|f| !sel.contains(f));
-                }
-                self.duplicates.groups.retain(|g| g.files.len() > 1);
-                self.duplicates.total_wasted = self.dup_wasted();
-            }
-            Tab::EmptyFolders => {
-                self.empty_folders.folders.clear();
-            }
-            _ => {}
+        if self.last_cleaned_paths.is_empty() {
+            return;
         }
+        let gone: std::collections::HashSet<PathBuf> =
+            self.last_cleaned_paths.iter().cloned().collect();
+
+        self.custom.matched_files.retain(|f| !gone.contains(&f.path));
+        self.custom.selected.retain(|p| !gone.contains(p));
+        self.custom.total_matched_size =
+            self.custom.matched_files.iter().map(|f| f.size).sum();
+
+        self.system.matched_files.retain(|f| !gone.contains(&f.path));
+        self.system.total_matched_size =
+            self.system.matched_files.iter().map(|f| f.size).sum();
+
+        self.large_files.files.retain(|f| !gone.contains(&f.path));
+        self.large_files.selected.retain(|p| !gone.contains(p));
+        self.large_files.total_size =
+            self.large_files.files.iter().map(|f| f.size).sum();
+
+        self.duplicates.selected_files.retain(|p| !gone.contains(p));
+        for g in &mut self.duplicates.groups {
+            g.files.retain(|f| !gone.contains(f));
+        }
+        self.duplicates.groups.retain(|g| g.files.len() > 1);
+        self.duplicates.total_wasted = self.dup_wasted();
+
+        self.empty_folders.folders.retain(|p| !gone.contains(p));
     }
 
     pub fn poll_messages(&mut self, ctx: &egui::Context) {
         if let Some(rx) = self.rx.take() {
             let mut still_active = true;
-            while let Ok(msg) = rx.try_recv() {
+            loop {
+                let msg = match rx.try_recv() {
+                    Ok(m) => m,
+                    Err(mpsc::TryRecvError::Empty) => break,
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        // The worker thread died without a Done/Error (e.g. a
+                        // panic) — clear the busy flags or the UI is stuck.
+                        if self.scanning || self.cleaning {
+                            self.add_log("ERROR: worker stopped unexpectedly.");
+                            self.status = "Error".to_string();
+                            self.status_toast = 120;
+                            self.scanning = false;
+                            self.cleaning = false;
+                            self.pending_auto_clean = None;
+                        }
+                        still_active = false;
+                        break;
+                    }
+                };
                 match msg {
                     workers::WorkerMessage::Log(s) => self.add_log(&s),
                     workers::WorkerMessage::Progress(p) => self.progress = p,
@@ -1307,7 +1352,12 @@ impl CleanerApp {
                             entries.iter().map(|e| e.size).sum();
                         self.folder_sizes.entries = entries;
                     }
-                    workers::WorkerMessage::CleanStats { deleted, freed } => {
+                    workers::WorkerMessage::CleanStats {
+                        deleted,
+                        freed,
+                        paths,
+                    } => {
+                        self.last_cleaned_paths = paths;
                         self.total_files_cleaned += deleted;
                         self.total_space_freed += freed;
                         self.settings.total_files_cleaned += deleted;
@@ -1338,15 +1388,14 @@ impl CleanerApp {
                         if self.scanning {
                             self.scanning = false;
                             self.last_scan_summary = summary;
-                            if self.pending_auto_clean {
-                                self.pending_auto_clean = false;
+                            if let Some(tab) = self.pending_auto_clean.take() {
                                 if self.settings.dry_run {
                                     self.add_log(
                                         "Scheduled auto-clean skipped — dry run is on.",
                                     );
                                 } else {
                                     self.add_log("Scheduled auto-clean starting...");
-                                    self.start_clean_selected();
+                                    self.start_clean_selected(tab);
                                 }
                             }
                         }
@@ -1373,6 +1422,9 @@ impl CleanerApp {
                         self.cleaning = false;
                         still_active = false;
                     }
+                }
+                if !still_active {
+                    break;
                 }
             }
             if still_active {
@@ -1963,9 +2015,9 @@ impl CleanerApp {
                             n,
                             helpers::human_size(sel_size)
                         );
-                        self.confirm_action = Some(ConfirmAction::CleanFiles);
+                        self.confirm_action = Some(ConfirmAction::CleanFiles(self.tab));
                     } else {
-                        self.start_clean_selected();
+                        self.start_clean_selected(self.tab);
                     }
                 }
                 if ui
@@ -2357,9 +2409,9 @@ impl CleanerApp {
                         self.confirm_title = "Delete selected large files?".to_string();
                         self.confirm_body =
                             format!("Permanently remove the {} selected files?", n);
-                        self.confirm_action = Some(ConfirmAction::CleanFiles);
+                        self.confirm_action = Some(ConfirmAction::CleanFiles(self.tab));
                     } else {
-                        self.start_clean_selected();
+                        self.start_clean_selected(self.tab);
                     }
                 }
                 if ui
@@ -2489,9 +2541,12 @@ impl CleanerApp {
 
         card(ui, "Cleaning targets", |ui| {
             let mut remove_idx: Option<usize> = None;
+            let mut toggled: Vec<(String, bool)> = Vec::new();
             for (i, target) in self.system.targets.iter_mut().enumerate() {
                 ui.horizontal(|ui| {
-                    ui.checkbox(&mut target.enabled, "");
+                    if ui.checkbox(&mut target.enabled, "").changed() && !target.custom {
+                        toggled.push((target.name.clone(), target.enabled));
+                    }
                     ui.vertical(|ui| {
                         ui.horizontal(|ui| {
                             ui.label(egui::RichText::new(&target.name).strong());
@@ -2519,12 +2574,21 @@ impl CleanerApp {
             }
             if let Some(i) = remove_idx {
                 let removed = self.system.targets.remove(i);
-                let path_str = removed.path.display().to_string();
+                // Compare as paths, not display strings — PathBuf normalizes
+                // things like a trailing backslash that the raw String keeps.
                 self.settings
                     .custom_targets
-                    .retain(|c| c.path != path_str);
+                    .retain(|c| PathBuf::from(&c.path) != removed.path);
                 self.settings.save();
                 self.add_log(&format!("Removed custom target: {}", removed.name));
+            }
+            for (name, enabled) in toggled {
+                if enabled {
+                    self.settings.disabled_targets.retain(|n| n != &name);
+                } else if !self.settings.disabled_targets.contains(&name) {
+                    self.settings.disabled_targets.push(name);
+                }
+                self.settings.save();
             }
 
             ui.collapsing("Add a custom target", |ui| {
@@ -2559,9 +2623,9 @@ impl CleanerApp {
                             n,
                             helpers::human_size(self.system.total_matched_size)
                         );
-                        self.confirm_action = Some(ConfirmAction::CleanFiles);
+                        self.confirm_action = Some(ConfirmAction::CleanFiles(self.tab));
                     } else {
-                        self.start_clean_selected();
+                        self.start_clean_selected(self.tab);
                     }
                 }
             });
@@ -2891,6 +2955,8 @@ impl CleanerApp {
                     reveal_in_explorer(&settings::data_dir());
                 }
                 if ui.button("Reveal settings file").clicked() {
+                    // Make sure it exists on disk before Explorer opens it.
+                    self.settings.save();
                     reveal_in_explorer(&settings::settings_file_path());
                 }
                 if ui.button("Open history log").clicked() {
@@ -3246,11 +3312,13 @@ impl eframe::App for CleanerApp {
                         }
                     });
                 });
-            if close {
-                self.confirm_action = None;
-            }
+            // Act before clearing: handle_confirm() takes confirm_action,
+            // so clearing first would swallow the action entirely.
             if do_action {
                 self.handle_confirm();
+            }
+            if close {
+                self.confirm_action = None;
             }
         }
     }

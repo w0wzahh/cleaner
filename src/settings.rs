@@ -57,6 +57,10 @@ pub struct Settings {
     /// Whether the getting-started card on the dashboard has been dismissed.
     #[serde(default)]
     pub welcomed: bool,
+    /// Names of built-in system targets the user has unchecked, so the
+    /// toggles survive restarts.
+    #[serde(default)]
+    pub disabled_targets: Vec<String>,
 }
 
 fn default_schedule_hours() -> u32 {
@@ -92,7 +96,7 @@ impl ScheduleTarget {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            theme: Theme::Dark,
+            theme: Theme::default(),
             use_trash: true,
             dry_run: true,
             recursive: false,
@@ -100,7 +104,7 @@ impl Default for Settings {
             confirm_clean: true,
             secure_delete: false,
             default_dir: home_default_dir(),
-            github_url: "https://github.com/w0wzahh".to_string(),
+            github_url: "https://github.com/w0wzahh/cleaner".to_string(),
             log_file: "cleaner_history.log".to_string(),
             custom_targets: Vec::new(),
             protected_paths: String::new(),
@@ -115,6 +119,7 @@ impl Default for Settings {
             schedule_auto_clean: false,
             schedule_last_run: 0,
             welcomed: false,
+            disabled_targets: Vec::new(),
         }
     }
 }
@@ -130,8 +135,16 @@ impl Settings {
         candidates.push(PathBuf::from("cleaner_settings.json"));
         for path in candidates {
             if let Ok(data) = std::fs::read_to_string(&path) {
-                if let Ok(s) = serde_json::from_str(&data) {
-                    return s;
+                match serde_json::from_str(&data) {
+                    Ok(s) => return s,
+                    Err(_) => {
+                        // Don't silently lose a corrupt settings file — keep a
+                        // .bak copy next to it and start fresh.
+                        let _ = std::fs::rename(
+                            &path,
+                            path.with_extension("json.bak"),
+                        );
+                    }
                 }
             }
         }

@@ -14,6 +14,56 @@ Things planned for the next release. Nothing here is final yet.
 
 ---
 
+## [2.9.3] — 2026-09-12
+
+A full-codebase audit pass. All fixes, no new features.
+
+### Fixed
+- **Critical:** the built-in "User Cache" system target pointed at the
+  *entire* `AppData\Local` folder (and was enabled by default) — replaced
+  with Crash Dumps, which is actually safe to clean.
+- **Critical:** the confirm dialog's "Yes, continue" did nothing — the
+  action was cleared before it was read. Clean confirmations work again.
+- Protected paths are now case-insensitive (`c:\foo` protects `C:\Foo`),
+  handle forward slashes and trailing separators, and can't leak through
+  sibling folders (`C:\Keep` no longer matches `C:\KeepOther`).
+- Glob patterns like `*.tmp` now match file *names* — previously they were
+  anchored to the full path and matched nothing.
+- "Include hidden" now respects the real Windows hidden attribute, not
+  just dot-prefixed filenames.
+- System scan now recurses into subfolders (temp junk mostly lives there)
+  and honors protected paths during the scan, not just at clean time.
+- Large-file and empty-folder scans honor protected paths too.
+- Empty-folder clean re-verifies a folder is still empty before removing
+  it — a file that landed between scan and clean is no longer trashed.
+- CLI `clean-*` commands now honor the dry-run setting from the app
+  (`--force` overrides) — a scheduled task can't silently delete for real
+  while dry run is on.
+- CLI `scan-system`/`clean-system` now include your custom targets and
+  respect disabled built-ins, same as the GUI.
+- Confirm-clean and scheduled auto-clean are pinned to the tab they were
+  started on — switching tabs mid-flow can't clean the wrong list.
+- Only files that actually got deleted are removed from the results lists;
+  failures stay so you can retry them.
+- Files that vanish between scan and clean (normal temp churn) count as
+  cleaned instead of flooding the log with "not found" errors.
+- A crashed worker thread no longer leaves the app stuck in "busy" forever.
+- Built-in system-target checkboxes persist across restarts.
+- Removing a custom target with a trailing backslash in its path works.
+- History log rotates at ~1 MB instead of growing forever.
+- Duplicate groups are sorted, so "kept" file is deterministic.
+- Secure-delete shredding is ~8x faster (fills 8 bytes per RNG call).
+- Same-second report exports no longer overwrite each other.
+- Default GitHub link points at the repo, not the user profile.
+- Fresh installs default to the Midnight theme as intended.
+- A corrupt settings file is preserved as `.bak` instead of silently reset.
+
+### Added
+- `--force` CLI flag to override dry run.
+- Unit tests for path exclusion, glob matching, and hidden detection.
+
+---
+
 ## [2.9.2] — 2026-09-12
 
 ### Added
