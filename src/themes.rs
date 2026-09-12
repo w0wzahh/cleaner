@@ -10,6 +10,7 @@ use eframe::egui;
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Theme {
+    Midnight,
     Dark,
     Light,
     Nord,
@@ -19,13 +20,14 @@ pub enum Theme {
 
 impl Default for Theme {
     fn default() -> Self {
-        Theme::Dark
+        Theme::Midnight
     }
 }
 
 impl Theme {
     pub fn label(&self) -> &'static str {
         match self {
+            Theme::Midnight => "Midnight",
             Theme::Dark => "Dark",
             Theme::Light => "Light",
             Theme::Nord => "Nord",
@@ -35,11 +37,19 @@ impl Theme {
     }
 
     pub fn all() -> &'static [Theme] {
-        &[Theme::Dark, Theme::Light, Theme::Nord, Theme::Dracula, Theme::Solarized]
+        &[
+            Theme::Midnight,
+            Theme::Dark,
+            Theme::Light,
+            Theme::Nord,
+            Theme::Dracula,
+            Theme::Solarized,
+        ]
     }
 
     pub fn visuals(&self) -> egui::Visuals {
         match self {
+            Theme::Midnight => midnight(),
             Theme::Dark => dark(),
             Theme::Light => light(),
             Theme::Nord => nord(),
@@ -51,11 +61,20 @@ impl Theme {
     /// Solid accent color used for primary buttons, selections, and links.
     pub fn accent(&self) -> egui::Color32 {
         match self {
+            Theme::Midnight => egui::Color32::from_rgb(0xFF, 0x3D, 0x9A),
             Theme::Dark => egui::Color32::from_rgb(0x63, 0x66, 0xF1),
             Theme::Light => egui::Color32::from_rgb(0x4F, 0x46, 0xE5),
             Theme::Nord => egui::Color32::from_rgb(0x5E, 0x81, 0xAC),
             Theme::Dracula => egui::Color32::from_rgb(0x9C, 0x6B, 0xE8),
             Theme::Solarized => egui::Color32::from_rgb(0x26, 0x8B, 0xD2),
+        }
+    }
+
+    /// Secondary accent for gradients (ring, chart highlights).
+    pub fn accent2(&self) -> egui::Color32 {
+        match self {
+            Theme::Midnight => egui::Color32::from_rgb(0x8B, 0x5C, 0xF6),
+            _ => self.accent(),
         }
     }
 }
@@ -86,6 +105,16 @@ pub fn apply_spacing(ctx: &egui::Context) {
         s.spacing.button_padding = egui::vec2(14.0, 6.0);
         s.spacing.indent = 20.0;
     });
+}
+
+fn midnight() -> egui::Visuals {
+    let mut v = egui::Visuals::dark();
+    v.panel_fill = egui::Color32::from_rgb(0x16, 0x0F, 0x26);
+    v.window_fill = egui::Color32::from_rgb(0x1E, 0x15, 0x33);
+    v.extreme_bg_color = egui::Color32::from_rgb(0x0E, 0x08, 0x18);
+    v.faint_bg_color = egui::Color32::from_rgb(0x25, 0x1A, 0x40);
+    v.override_text_color = Some(egui::Color32::from_rgb(0xED, 0xEA, 0xF6));
+    finish(v, Theme::Midnight.accent())
 }
 
 fn dark() -> egui::Visuals {

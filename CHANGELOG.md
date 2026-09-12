@@ -16,6 +16,28 @@ Things planned for the next release. Nothing here is final yet.
 
 ---
 
+## [2.6.0] — 2026-09-12
+
+The "make it feel premium" release — a visual overhaul inspired by modern
+cleaner apps.
+
+### Added
+- **Midnight theme**: deep purple surfaces with a magenta accent and a violet
+  gradient. It's the new default — old themes are still there in the picker.
+- **Dashboard hero**: "Welcome to Cleaner" next to a big glowing ring button.
+  Click it to start a smart scan; while anything is running, the ring becomes
+  a live progress arc (and a spinner when progress is indeterminate).
+- **Tool tiles**: icon cards on the dashboard that jump straight to each tool.
+- **Activity chart**: a little bar chart of files cleaned per day over the
+  last week, fed by real clean history persisted in settings.
+- **Sidebar icons** and a "Last clean" timestamp on the dashboard.
+
+### Changed
+- Quick actions moved beside the activity chart; stats row stays on the
+  dashboard under the hero.
+
+---
+
 ## [2.5.0] — 2026-09-12
 
 The "more control" release.
@@ -193,7 +215,10 @@ but it's where all of this started.
 
 ---
 
-[Unreleased]: https://github.com/w0wzahh/cleaner/compare/v2.4.0...HEAD
+[Unreleased]: https://github.com/w0wzahh/cleaner/compare/v2.6.0...HEAD
+[2.6.0]: https://github.com/w0wzahh/cleaner/compare/v2.5.0...v2.6.0
+[2.5.0]: https://github.com/w0wzahh/cleaner/compare/v2.4.1...v2.5.0
+[2.4.1]: https://github.com/w0wzahh/cleaner/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/w0wzahh/cleaner/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/w0wzahh/cleaner/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/w0wzahh/cleaner/compare/v2.1.0...v2.2.0

@@ -30,6 +30,12 @@ pub struct Settings {
     pub total_files_cleaned: u64,
     #[serde(default)]
     pub total_space_freed: u64,
+    /// Files cleaned per day ("YYYY-MM-DD" -> count) for the dashboard chart.
+    #[serde(default)]
+    pub clean_history: std::collections::BTreeMap<String, u64>,
+    /// Timestamp of the last real clean, for display.
+    #[serde(default)]
+    pub last_clean: String,
 }
 
 impl Default for Settings {
@@ -49,6 +55,8 @@ impl Default for Settings {
             protected_paths: String::new(),
             total_files_cleaned: 0,
             total_space_freed: 0,
+            clean_history: std::collections::BTreeMap::new(),
+            last_clean: String::new(),
         }
     }
 }

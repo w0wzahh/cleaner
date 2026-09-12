@@ -95,13 +95,13 @@ fn danger_button(ui: &mut egui::Ui, enabled: bool, text: impl Into<String>) -> e
 }
 
 /// Sidebar navigation entry; returns true when clicked.
-fn nav_item(ui: &mut egui::Ui, current: Tab, target: Tab, label: &str) -> bool {
+fn nav_item(ui: &mut egui::Ui, current: Tab, target: Tab, icon: &str, label: &str) -> bool {
     let w = ui.available_width();
     ui.add_sized(
         [w, 32.0],
         egui::SelectableLabel::new(
             current == target,
-            egui::RichText::new(format!("  {}", label)).size(13.5),
+            egui::RichText::new(format!("  {}  {}", icon, label)).size(13.5),
         ),
     )
     .clicked()
@@ -173,6 +173,207 @@ fn matched_file_rows(ui: &mut egui::Ui, files: &[MatchedFile], id: &str) {
 /// Open a path in the system file manager. Best-effort.
 fn reveal_in_explorer(path: &Path) {
     let _ = open::that(path);
+}
+
+/// Big glowing ring used as the dashboard's main action. `progress == None`
+/// shows an idle "START" ring; `Some(p)` turns it into a progress arc, and
+/// `Some(~0)` becomes a spinning indeterminate arc.
+fn start_ring(
+    ui: &mut egui::Ui,
+    progress: Option<f32>,
+    accent2: egui::Color32,
+) -> egui::Response {
+    let accent = accent(ui);
+    let size = 170.0;
+    let (rect, resp) =
+        ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::click());
+    if ui.is_rect_visible(rect) {
+        let p = ui.painter().with_clip_rect(rect);
+        let c = rect.center();
+        let r = size / 2.0 - 16.0;
+        let boost = if resp.hovered() { 1.25 } else { 1.0 };
+
+        // Soft outer glow.
+        for i in 1..=4u32 {
+            p.circle_stroke(
+                c,
+                r + i as f32 * 4.5,
+                egui::Stroke::new(2.0_f32, accent.gamma_multiply(0.10 / i as f32)),
+            );
+        }
+        // Dim track.
+        p.circle_stroke(c, r, egui::Stroke::new(7.0_f32, accent.gamma_multiply(0.15)));
+
+        let now = ui.ctx().input(|i| i.time) as f32;
+        let (start_deg, sweep_deg, label, label_size) = match progress {
+            None => (-90.0, 360.0, "START".to_string(), 19.0),
+            Some(pr) if pr <= 0.001 => {
+                ((now * 220.0) % 360.0 - 90.0, 100.0, "…".to_string(), 24.0)
+            }
+            Some(pr) => (
+                -90.0,
+                pr.clamp(0.0, 1.0) * 360.0,
+                format!("{:.0}%", pr.clamp(0.0, 1.0) * 100.0),
+                24.0,
+            ),
+        };
+
+        // Gradient arc in ~5-degree segments.
+        let segs = 72usize;
+        for i in 0..segs {
+            let t0 = i as f32 / segs as f32;
+            let t1 = (i + 1) as f32 / segs as f32;
+            if sweep_deg * t0 >= sweep_deg {
+                break;
+            }
+            let a0 = (start_deg + sweep_deg * t0).to_radians();
+            let a1 = (start_deg + sweep_deg * t1).to_radians();
+            let col = crate::themes::lerp_color(accent2, accent, t0)
+                .gamma_multiply(boost);
+            let p0 = c + egui::vec2(a0.cos() * r, a0.sin() * r);
+            let p1 = c + egui::vec2(a1.cos() * r, a1.sin() * r);
+            p.line_segment([p0, p1], egui::Stroke::new(7.0_f32, col));
+        }
+
+        p.text(
+            c,
+            egui::Align2::CENTER_CENTER,
+            label,
+            egui::FontId::proportional(label_size),
+            egui::Color32::WHITE,
+        );
+    }
+    if resp.hovered() && progress.is_none() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    resp
+}
+
+/// Clickable dashboard tile: icon chip + title + description.
+fn tool_tile(
+    ui: &mut egui::Ui,
+    width: f32,
+    icon: &str,
+    title: &str,
+    desc: &str,
+) -> egui::Response {
+    let h = 76.0;
+    let (rect, resp) =
+        ui.allocate_exact_size(egui::vec2(width, h), egui::Sense::click());
+    if ui.is_rect_visible(rect) {
+        let accent = accent(ui);
+        let p = ui.painter().with_clip_rect(rect);
+        let hovered = resp.hovered();
+        let fill = if hovered {
+            ui.visuals().faint_bg_color.gamma_multiply(1.45)
+        } else {
+            ui.visuals().faint_bg_color
+        };
+        let border = if hovered {
+            accent.gamma_multiply(0.7)
+        } else {
+            ui.visuals().widgets.noninteractive.bg_stroke.color
+        };
+        p.rect_filled(rect, 10.0, fill);
+        p.rect_stroke(rect, 10.0, egui::Stroke::new(1.0_f32, border));
+
+        let icon_c = rect.min + egui::vec2(32.0, 30.0);
+        p.circle_filled(icon_c, 15.0, accent.gamma_multiply(0.14));
+        p.text(
+            icon_c,
+            egui::Align2::CENTER_CENTER,
+            icon,
+            egui::FontId::proportional(15.0),
+            accent,
+        );
+        p.text(
+            rect.min + egui::vec2(58.0, 18.0),
+            egui::Align2::LEFT_TOP,
+            title,
+            egui::FontId::proportional(14.5),
+            ui.visuals().text_color(),
+        );
+        p.text(
+            rect.min + egui::vec2(58.0, 42.0),
+            egui::Align2::LEFT_TOP,
+            desc,
+            egui::FontId::proportional(11.0),
+            ui.visuals().weak_text_color(),
+        );
+    }
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    resp
+}
+
+/// Little bar chart: files cleaned per day over the last week.
+fn week_chart(ui: &mut egui::Ui, history: &BTreeMap<String, u64>) {
+    let today = Local::now().date_naive();
+    let days: Vec<(String, u64)> = (0..7)
+        .rev()
+        .map(|i| {
+            let d = today - chrono::TimeDelta::days(i);
+            (
+                d.format("%a").to_string(),
+                *history
+                    .get(&d.format("%Y-%m-%d").to_string())
+                    .unwrap_or(&0),
+            )
+        })
+        .collect();
+    let real_max = days.iter().map(|d| d.1).max().unwrap_or(0);
+    let max = real_max.max(1) as f32;
+    let w = ui.available_width();
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 116.0), egui::Sense::hover());
+    let p = ui.painter().with_clip_rect(rect);
+    let accent = accent(ui);
+    let weak = ui.visuals().weak_text_color();
+    let n = days.len() as f32;
+    let gap = 10.0;
+    let bw = (rect.width() - gap * (n - 1.0)).max(4.0) / n;
+    let chart_h = rect.height() - 22.0;
+
+    if real_max == 0 {
+        p.text(
+            rect.center() - egui::vec2(0.0, 8.0),
+            egui::Align2::CENTER_CENTER,
+            "No cleans recorded yet this week",
+            egui::FontId::proportional(12.0),
+            weak,
+        );
+    }
+
+    for (i, (day, count)) in days.iter().enumerate() {
+        let x0 = rect.min.x + i as f32 * (bw + gap);
+        let bh = (*count as f32 / max) * (chart_h - 16.0);
+        let bar = egui::Rect::from_min_size(
+            egui::pos2(x0, rect.min.y + chart_h - bh),
+            egui::vec2(bw, bh.max(2.0)),
+        );
+        let col = if i == days.len() - 1 {
+            accent
+        } else {
+            accent.gamma_multiply(0.4)
+        };
+        p.rect_filled(bar, 4.0, col);
+        if *count > 0 {
+            p.text(
+                egui::pos2(x0 + bw / 2.0, bar.min.y - 8.0),
+                egui::Align2::CENTER_CENTER,
+                format!("{}", count),
+                egui::FontId::proportional(10.0),
+                weak,
+            );
+        }
+        p.text(
+            egui::pos2(x0 + bw / 2.0, rect.max.y - 9.0),
+            egui::Align2::CENTER_CENTER,
+            day,
+            egui::FontId::proportional(10.0),
+            weak,
+        );
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -740,6 +941,18 @@ impl CleanerApp {
                         self.total_space_freed += freed;
                         self.settings.total_files_cleaned += deleted;
                         self.settings.total_space_freed += freed;
+                        let today = Local::now().format("%Y-%m-%d").to_string();
+                        *self.settings.clean_history.entry(today).or_default() +=
+                            deleted;
+                        self.settings.last_clean =
+                            Local::now().format("%Y-%m-%d %H:%M").to_string();
+                        while self.settings.clean_history.len() > 60 {
+                            if let Some(k) =
+                                self.settings.clean_history.keys().next().cloned()
+                            {
+                                self.settings.clean_history.remove(&k);
+                            }
+                        }
                         self.settings.save();
                     }
                     workers::WorkerMessage::Done { summary } => {
@@ -817,6 +1030,65 @@ impl CleanerApp {
     }
 
     fn draw_dashboard_inner(&mut self, ui: &mut egui::Ui) {
+        // Hero: welcome text + the big glowing START ring.
+        card(ui, "", |ui| {
+            ui.horizontal(|ui| {
+                ui.add_space(14.0);
+                ui.vertical(|ui| {
+                    ui.add_space(26.0);
+                    ui.label(egui::RichText::new("Welcome to").size(24.0));
+                    ui.label(
+                        egui::RichText::new("Cleaner")
+                            .size(40.0)
+                            .strong()
+                            .color(accent(ui)),
+                    );
+                    ui.add_space(8.0);
+                    ui.label(
+                        egui::RichText::new("Start a smart scan of your system.")
+                            .weak()
+                            .size(13.0),
+                    );
+                    ui.add_space(4.0);
+                    if !self.settings.last_clean.is_empty() {
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "Last clean: {}",
+                                self.settings.last_clean
+                            ))
+                            .weak()
+                            .small(),
+                        );
+                    } else {
+                        ui.label(
+                            egui::RichText::new("No cleans yet.")
+                                .weak()
+                                .small(),
+                        );
+                    }
+                });
+                ui.with_layout(
+                    egui::Layout::right_to_left(egui::Align::Center),
+                    |ui| {
+                        ui.add_space(10.0);
+                        let busy = self.busy();
+                        let resp = start_ring(
+                            ui,
+                            if busy { Some(self.progress) } else { None },
+                            self.settings.theme.accent2(),
+                        );
+                        if resp.clicked() && !busy {
+                            self.tab = Tab::SystemCleaner;
+                            self.start_system_scan();
+                        }
+                    },
+                );
+            });
+        });
+
+        ui.add_space(10.0);
+
+        // Stats row
         let gap = 8.0;
         let w = ((ui.available_width() - 2.0 * gap) / 3.0).max(80.0);
         ui.horizontal(|ui| {
@@ -845,25 +1117,68 @@ impl CleanerApp {
 
         ui.add_space(10.0);
 
-        card(ui, "Quick actions", |ui| {
+        // Tool tiles — quick navigation, like the reference layout.
+        card(ui, "Tools", |ui| {
+            let tiles: [(Tab, &str, &str, &str); 6] = [
+                (Tab::CustomClean, "🧹", "Custom Clean", "Filter and clean any folder"),
+                (Tab::Duplicates, "📑", "Duplicates", "Find and remove copies"),
+                (Tab::LargeFiles, "📁", "Large Files", "Locate the space hogs"),
+                (Tab::SystemCleaner, "🖥", "System Cleaner", "Temp files and caches"),
+                (Tab::EmptyFolders, "🗑", "Empty Folders", "Cascade-aware cleanup"),
+                (Tab::FolderSizes, "📊", "Folder Sizes", "See where space went"),
+            ];
+            let tw = ((ui.available_width() - 16.0) / 3.0).max(60.0);
+            let mut go: Option<Tab> = None;
+            for row in tiles.chunks(3) {
+                ui.horizontal(|ui| {
+                    for (i, (t, icon, title, desc)) in row.iter().enumerate() {
+                        if tool_tile(ui, tw, icon, title, desc).clicked() {
+                            go = Some(*t);
+                        }
+                        if i + 1 < row.len() {
+                            ui.add_space(8.0);
+                        }
+                    }
+                });
+                ui.add_space(8.0);
+            }
+            if let Some(t) = go {
+                self.tab = t;
+            }
+        });
+
+        ui.add_space(10.0);
+
+        // Chart + quick actions side by side.
+        let total_w = ui.available_width();
+        let chart_w = (total_w * 0.56).max(240.0);
+        ui.horizontal_top(|ui| {
+            ui.allocate_ui_with_layout(
+                egui::vec2(chart_w, 10.0),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    card(ui, "Files cleaned — last 7 days", |ui| {
+                        week_chart(ui, &self.settings.clean_history);
+                    });
+                },
+            );
+            ui.add_space(8.0);
             let busy = self.busy();
-            ui.horizontal_wrapped(|ui| {
-                if primary_button(ui, !busy, "Scan custom folder").clicked() {
-                    self.tab = Tab::CustomClean;
-                    self.start_custom_scan();
-                }
-                if primary_button(ui, !busy, "Scan system junk").clicked() {
-                    self.tab = Tab::SystemCleaner;
-                    self.start_system_scan();
-                }
-                if primary_button(ui, !busy, "Find duplicates").clicked() {
-                    self.tab = Tab::Duplicates;
-                    self.start_duplicates_scan();
-                }
-                if primary_button(ui, !busy, "Find large files").clicked() {
-                    self.tab = Tab::LargeFiles;
-                    self.start_large_files_scan();
-                }
+            ui.vertical(|ui| {
+                card(ui, "Quick actions", |ui| {
+                    if primary_button(ui, !busy, "Scan custom folder").clicked() {
+                        self.tab = Tab::CustomClean;
+                        self.start_custom_scan();
+                    }
+                    if primary_button(ui, !busy, "Find duplicates").clicked() {
+                        self.tab = Tab::Duplicates;
+                        self.start_duplicates_scan();
+                    }
+                    if primary_button(ui, !busy, "Find large files").clicked() {
+                        self.tab = Tab::LargeFiles;
+                        self.start_large_files_scan();
+                    }
+                });
             });
         });
 
@@ -1898,40 +2213,40 @@ impl eframe::App for CleanerApp {
                 ui.add_space(16.0);
 
                 nav_section(ui, "OVERVIEW");
-                if nav_item(ui, self.tab, Tab::Dashboard, "Dashboard") {
+                if nav_item(ui, self.tab, Tab::Dashboard, "🏠", "Dashboard") {
                     self.tab = Tab::Dashboard;
                 }
-                if nav_item(ui, self.tab, Tab::FolderSizes, "Folder Sizes") {
+                if nav_item(ui, self.tab, Tab::FolderSizes, "📊", "Folder Sizes") {
                     self.tab = Tab::FolderSizes;
                 }
-                if nav_item(ui, self.tab, Tab::Storage, "Storage") {
+                if nav_item(ui, self.tab, Tab::Storage, "💾", "Storage") {
                     self.tab = Tab::Storage;
                 }
 
                 ui.add_space(8.0);
                 nav_section(ui, "CLEANING");
-                if nav_item(ui, self.tab, Tab::CustomClean, "Custom Clean") {
+                if nav_item(ui, self.tab, Tab::CustomClean, "🧹", "Custom Clean") {
                     self.tab = Tab::CustomClean;
                 }
-                if nav_item(ui, self.tab, Tab::Duplicates, "Duplicates") {
+                if nav_item(ui, self.tab, Tab::Duplicates, "📑", "Duplicates") {
                     self.tab = Tab::Duplicates;
                 }
-                if nav_item(ui, self.tab, Tab::LargeFiles, "Large Files") {
+                if nav_item(ui, self.tab, Tab::LargeFiles, "📁", "Large Files") {
                     self.tab = Tab::LargeFiles;
                 }
-                if nav_item(ui, self.tab, Tab::SystemCleaner, "System Cleaner") {
+                if nav_item(ui, self.tab, Tab::SystemCleaner, "🖥", "System Cleaner") {
                     self.tab = Tab::SystemCleaner;
                 }
-                if nav_item(ui, self.tab, Tab::EmptyFolders, "Empty Folders") {
+                if nav_item(ui, self.tab, Tab::EmptyFolders, "🗑", "Empty Folders") {
                     self.tab = Tab::EmptyFolders;
                 }
 
                 ui.add_space(8.0);
                 nav_section(ui, "APP");
-                if nav_item(ui, self.tab, Tab::Changelog, "Changelog") {
+                if nav_item(ui, self.tab, Tab::Changelog, "📋", "Changelog") {
                     self.tab = Tab::Changelog;
                 }
-                if nav_item(ui, self.tab, Tab::About, "About") {
+                if nav_item(ui, self.tab, Tab::About, "ℹ", "About") {
                     self.tab = Tab::About;
                 }
 

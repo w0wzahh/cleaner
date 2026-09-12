@@ -11,6 +11,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2026-09-12
+### Added
+- Midnight theme — deep purple with a magenta accent, now the default.
+- Dashboard hero with a glowing ring button that starts a smart scan and
+  shows live progress as an arc while working.
+- Tool tiles — icon cards on the dashboard for every tool.
+- Activity chart — files cleaned per day over the last week.
+- Sidebar icons next to every nav entry.
+
 ## [2.5.0] - 2026-09-12
 ### Added
 - Per-file checkboxes in Custom Clean — pick exactly what gets deleted.
