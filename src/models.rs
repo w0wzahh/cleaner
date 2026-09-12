@@ -11,6 +11,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0] - 2026-09-12
+### Added
+- Scheduled scans — run a scan every 1/6/12/24h or weekly while the app is
+  open, with optional auto-clean (skipped when dry run is on).
+- New app icon — broom artwork with a theme-tinted background; switching
+  themes recolors it live.
+### Changed
+- Sidebar and tile icons are hand-drawn line glyphs (emoji rendered as empty
+  boxes on some machines).
+
 ## [2.6.0] - 2026-09-12
 ### Added
 - Midnight theme — deep purple with a magenta accent, now the default.

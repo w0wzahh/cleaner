@@ -241,136 +241,66 @@ pub fn lerp_visuals(a: &egui::Visuals, b: &egui::Visuals, t: f32) -> egui::Visua
 }
 
 // -----------------------------------------------------------------------------
-// procedurally generated app icon — a broom on a rounded gradient tile
+// app icon — embedded artwork, background tinted to match the theme
 // -----------------------------------------------------------------------------
 
-/// Distance from point to segment (capsule SDF helper).
-fn sd_segment(px: f32, py: f32, a: (f32, f32), b: (f32, f32)) -> f32 {
-    let pax = px - a.0;
-    let pay = py - a.1;
-    let bax = b.0 - a.0;
-    let bay = b.1 - a.1;
-    let h = ((pax * bax + pay * bay) / (bax * bax + bay * bay)).clamp(0.0, 1.0);
-    let dx = pax - bax * h;
-    let dy = pay - bay * h;
-    (dx * dx + dy * dy).sqrt()
-}
+/// Embedded 256x256 RGBA app artwork (the broom + sparkles design).
+/// Generated once from `icon.png`; decoded at runtime without any image crate.
+const ICON_RGBA: &[u8] = include_bytes!("../assets/icon.rgba");
+const ICON_SIZE: u32 = 256;
 
-/// Signed distance to a centered rounded square (negative inside).
-fn sd_round_box(px: f32, py: f32, half: f32, r: f32) -> f32 {
-    let qx = (px - half).abs() - (half - r);
-    let qy = (py - half).abs() - (half - r);
-    let ax = qx.max(0.0);
-    let ay = qy.max(0.0);
-    (ax * ax + ay * ay).sqrt() + qx.max(qy).min(0.0) - r
-}
+/// Build the window/taskbar icon from the embedded artwork. The artwork's flat
+/// lavender background is recolored to a light tint of the theme's accent, and
+/// the (flattened-black) corner pixels get their alpha restored so the rounded
+/// tile shape survives.
+pub fn generate_icon(theme: Theme) -> Arc<egui::IconData> {
+    let tint = lerp_color(egui::Color32::WHITE, theme.accent(), 0.16);
+    let mut rgba = vec![0u8; ICON_RGBA.len()];
 
-/// Signed distance to a triangle (positive inside).
-fn tri_dist(px: f32, py: f32, a: (f32, f32), b: (f32, f32), c: (f32, f32)) -> f32 {
-    // Normalize winding so "inside" is always positive.
-    let area = (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0);
-    let (b, c) = if area < 0.0 { (c, b) } else { (b, c) };
-    let edge = |p: (f32, f32), q: (f32, f32)| {
-        let ex = q.0 - p.0;
-        let ey = q.1 - p.1;
-        let len = (ex * ex + ey * ey).sqrt().max(1e-6);
-        (ex * (py - p.1) - ey * (px - p.0)) / len
-    };
-    edge(a, b).min(edge(b, c)).min(edge(c, a))
-}
+    for i in 0..(ICON_SIZE * ICON_SIZE) as usize {
+        let r = ICON_RGBA[i * 4];
+        let g = ICON_RGBA[i * 4 + 1];
+        let b = ICON_RGBA[i * 4 + 2];
 
-fn coverage(d: f32) -> f32 {
-    (d + 0.75) / 1.5
-}
+        let mx = r.max(g).max(b) as f32;
+        let mn = r.min(g).min(b) as f32;
+        let sat = if mx <= 0.0 { 0.0 } else { (mx - mn) / mx };
+        let d_bg = ((r as f32 - 241.0).powi(2)
+            + (g as f32 - 236.0).powi(2)
+            + (b as f32 - 252.0).powi(2))
+        .sqrt();
 
-pub fn generate_icon() -> Arc<egui::IconData> {
-    let size: u32 = 128;
-    let s = size as f32;
-    let half = s / 2.0;
-    let mut rgba = vec![0u8; (size * size * 4) as usize];
-
-    // Broom geometry — handle top-right, bristles fanning down-left.
-    let handle_a = (92.0, 24.0);
-    let handle_b = (56.0, 58.0);
-    let ferrule_a = (50.0, 54.0);
-    let ferrule_b = (62.0, 66.0);
-    let apex = (56.0, 62.0);
-    let base_a = (16.0, 94.0);
-    let base_b = (62.0, 112.0);
-    let base_mid = ((base_a.0 + base_b.0) / 2.0, (base_a.1 + base_b.1) / 2.0);
-    let fan_dir = (base_mid.0 - apex.0, base_mid.1 - apex.1);
-    let fan_len2 = fan_dir.0 * fan_dir.0 + fan_dir.1 * fan_dir.1;
-
-    for y in 0..size {
-        for x in 0..size {
-            let px = x as f32 + 0.5;
-            let py = y as f32 + 0.5;
-            let idx = ((y * size + x) * 4) as usize;
-
-            // Rounded-square tile, indigo gradient top-left -> bottom-right.
-            let d_bg = sd_round_box(px, py, half, 26.0);
-            let cov_bg = coverage(-d_bg).clamp(0.0, 1.0);
-            if cov_bg <= 0.0 {
-                continue;
-            }
-            let t = ((px + py) / (2.0 * s)).clamp(0.0, 1.0);
-            let mut r = 99.0 + (56.0 - 99.0) * t;
-            let mut g = 102.0 + (52.0 - 102.0) * t;
-            let mut b = 241.0 + (160.0 - 241.0) * t;
-
-            // Bristles: triangle with a light-to-dark straw gradient.
-            let d_tri = tri_dist(px, py, apex, base_a, base_b);
-            let cov_tri = coverage(d_tri).clamp(0.0, 1.0);
-            if cov_tri > 0.0 {
-                let proj = (((px - apex.0) * fan_dir.0 + (py - apex.1) * fan_dir.1)
-                    / fan_len2)
-                    .clamp(0.0, 1.0);
-                let mut br = 242.0 + (212.0 - 242.0) * proj;
-                let mut bg_ = 200.0 + (152.0 - 200.0) * proj;
-                let mut bb = 110.0 + (66.0 - 110.0) * proj;
-
-                // Thin darker strokes suggest individual bristle strands.
-                for target in [(26.0, 98.0), (38.0, 103.0), (50.0, 108.0)] {
-                    let d_line = sd_segment(px, py, apex, target);
-                    let strand = ((1.4 - d_line) / 1.2).clamp(0.0, 1.0);
-                    br *= 1.0 - 0.22 * strand;
-                    bg_ *= 1.0 - 0.22 * strand;
-                    bb *= 1.0 - 0.22 * strand;
-                }
-
-                r = r * (1.0 - cov_tri) + br * cov_tri;
-                g = g * (1.0 - cov_tri) + bg_ * cov_tri;
-                b = b * (1.0 - cov_tri) + bb * cov_tri;
-            }
-
-            // Ferrule (the band where the handle meets the bristles).
-            let d_fe = sd_segment(px, py, ferrule_a, ferrule_b) - 5.5;
-            let cov_fe = coverage(-d_fe).clamp(0.0, 1.0);
-            if cov_fe > 0.0 {
-                r = r * (1.0 - cov_fe) + 150.0 * cov_fe;
-                g = g * (1.0 - cov_fe) + 152.0 * cov_fe;
-                b = b * (1.0 - cov_fe) + 168.0 * cov_fe;
-            }
-
-            // Wooden handle.
-            let d_ha = sd_segment(px, py, handle_a, handle_b) - 4.5;
-            let cov_ha = coverage(-d_ha).clamp(0.0, 1.0);
-            if cov_ha > 0.0 {
-                r = r * (1.0 - cov_ha) + 158.0 * cov_ha;
-                g = g * (1.0 - cov_ha) + 102.0 * cov_ha;
-                b = b * (1.0 - cov_ha) + 60.0 * cov_ha;
-            }
-
-            rgba[idx] = r.clamp(0.0, 255.0) as u8;
-            rgba[idx + 1] = g.clamp(0.0, 255.0) as u8;
-            rgba[idx + 2] = b.clamp(0.0, 255.0) as u8;
-            rgba[idx + 3] = (cov_bg * 255.0) as u8;
+        let (or, og, ob, oa);
+        if d_bg < 45.0 {
+            // Flat background -> theme tint.
+            or = tint.r();
+            og = tint.g();
+            ob = tint.b();
+            oa = 255;
+        } else if sat < 0.14 && mx < 235.0 {
+            // Grayscale ramp between the black corners and the background —
+            // restore alpha so the tile keeps its rounded shape.
+            let a = (mx / 241.0).clamp(0.0, 1.0);
+            or = tint.r();
+            og = tint.g();
+            ob = tint.b();
+            oa = (a * 255.0) as u8;
+        } else {
+            // Artwork (purple broom, orange sparkles) — keep as-is.
+            or = r;
+            og = g;
+            ob = b;
+            oa = 255;
         }
+        rgba[i * 4] = or;
+        rgba[i * 4 + 1] = og;
+        rgba[i * 4 + 2] = ob;
+        rgba[i * 4 + 3] = oa;
     }
 
     Arc::new(egui::IconData {
         rgba,
-        width: size,
-        height: size,
+        width: ICON_SIZE,
+        height: ICON_SIZE,
     })
 }

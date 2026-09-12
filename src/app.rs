@@ -11,7 +11,7 @@ use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
 
-use chrono::Local;
+use chrono::{Local, TimeZone};
 use eframe::egui;
 use rfd::FileDialog;
 use std::io::Write;
@@ -94,17 +94,170 @@ fn danger_button(ui: &mut egui::Ui, enabled: bool, text: impl Into<String>) -> e
     )
 }
 
+/// Hand-drawn line icons — emoji fonts aren't reliable on every machine.
+#[derive(Clone, Copy)]
+enum Glyph {
+    House,
+    Chart,
+    Disk,
+    Broom,
+    Copy,
+    File,
+    Screen,
+    Trash,
+    List,
+    Info,
+    Clock,
+}
+
+/// Paint a small line icon centered at `c`. `h` is the half-size in points.
+fn paint_glyph(
+    p: &egui::Painter,
+    c: egui::Pos2,
+    h: f32,
+    g: Glyph,
+    col: egui::Color32,
+) {
+    let st = egui::Stroke::new((h * 0.22).max(1.0), col);
+    let pt = |dx: f32, dy: f32| c + egui::vec2(dx * h, dy * h);
+    match g {
+        Glyph::House => {
+            p.line_segment([pt(-1.0, 0.1), pt(0.0, -0.9)], st);
+            p.line_segment([pt(0.0, -0.9), pt(1.0, 0.1)], st);
+            p.line_segment([pt(-0.72, -0.05), pt(-0.72, 0.9)], st);
+            p.line_segment([pt(-0.72, 0.9), pt(0.72, 0.9)], st);
+            p.line_segment([pt(0.72, 0.9), pt(0.72, -0.05)], st);
+        }
+        Glyph::Chart => {
+            p.line_segment([pt(-1.0, 0.9), pt(1.0, 0.9)], st);
+            for (x, top) in [(-0.6, 0.1), (0.0, -0.45), (0.6, -0.85)] {
+                p.line_segment(
+                    [pt(x, 0.9), pt(x, top)],
+                    egui::Stroke::new(h * 0.3, col),
+                );
+            }
+        }
+        Glyph::Disk => {
+            p.rect_stroke(
+                egui::Rect::from_center_size(c, egui::vec2(1.9 * h, 1.5 * h)),
+                h * 0.25,
+                st,
+            );
+            p.circle_stroke(c, h * 0.4, st);
+        }
+        Glyph::Broom => {
+            p.line_segment([pt(0.55, -1.0), pt(-0.1, -0.25)], st);
+            p.line_segment([pt(-0.15, -0.2), pt(-0.95, 0.55)], st);
+            p.line_segment([pt(-0.15, -0.2), pt(-0.35, 0.95)], st);
+            p.line_segment([pt(-0.15, -0.2), pt(0.15, 0.8)], st);
+            p.line_segment([pt(-0.95, 0.55), pt(0.15, 0.8)], st);
+        }
+        Glyph::Copy => {
+            p.line_segment([pt(-0.35, -0.85), pt(0.85, -0.85)], st);
+            p.line_segment([pt(0.85, -0.85), pt(0.85, 0.35)], st);
+            p.line_segment([pt(-0.35, -0.85), pt(-0.35, -0.55)], st);
+            p.rect_stroke(
+                egui::Rect::from_min_max(pt(-0.85, -0.35), pt(0.35, 0.95)),
+                h * 0.15,
+                st,
+            );
+        }
+        Glyph::File => {
+            p.rect_stroke(
+                egui::Rect::from_min_max(pt(-0.7, -0.9), pt(0.7, 0.9)),
+                h * 0.15,
+                st,
+            );
+            p.line_segment([pt(-0.4, -0.4), pt(0.4, -0.4)], st);
+            p.line_segment([pt(-0.4, 0.0), pt(0.4, 0.0)], st);
+            p.line_segment([pt(-0.4, 0.4), pt(0.15, 0.4)], st);
+        }
+        Glyph::Screen => {
+            p.rect_stroke(
+                egui::Rect::from_min_max(pt(-0.95, -0.85), pt(0.95, 0.3)),
+                h * 0.15,
+                st,
+            );
+            p.line_segment([pt(0.0, 0.3), pt(0.0, 0.75)], st);
+            p.line_segment([pt(-0.35, 0.75), pt(0.35, 0.75)], st);
+        }
+        Glyph::Trash => {
+            p.line_segment([pt(-0.6, -0.3), pt(-0.4, 0.9)], st);
+            p.line_segment([pt(0.6, -0.3), pt(0.4, 0.9)], st);
+            p.line_segment([pt(-0.4, 0.9), pt(0.4, 0.9)], st);
+            p.line_segment([pt(-0.85, -0.55), pt(0.85, -0.55)], st);
+            p.line_segment([pt(-0.3, -0.55), pt(-0.3, -0.85)], st);
+            p.line_segment([pt(-0.3, -0.85), pt(0.3, -0.85)], st);
+            p.line_segment([pt(0.3, -0.85), pt(0.3, -0.55)], st);
+        }
+        Glyph::List => {
+            for i in -1..=1 {
+                let y = i as f32 * 0.55;
+                p.circle_filled(pt(-0.7, y), h * 0.13, col);
+                p.line_segment([pt(-0.3, y), pt(0.85, y)], st);
+            }
+        }
+        Glyph::Info => {
+            p.circle_stroke(c, h * 0.9, st);
+            p.circle_filled(pt(0.0, -0.4), h * 0.13, col);
+            p.line_segment(
+                [pt(0.0, -0.05), pt(0.0, 0.55)],
+                egui::Stroke::new(h * 0.28, col),
+            );
+        }
+        Glyph::Clock => {
+            p.circle_stroke(c, h * 0.9, st);
+            p.line_segment([c, pt(0.0, -0.55)], st);
+            p.line_segment([c, pt(0.4, 0.15)], st);
+        }
+    }
+}
+
 /// Sidebar navigation entry; returns true when clicked.
-fn nav_item(ui: &mut egui::Ui, current: Tab, target: Tab, icon: &str, label: &str) -> bool {
+fn nav_item(ui: &mut egui::Ui, current: Tab, target: Tab, g: Glyph, label: &str) -> bool {
     let w = ui.available_width();
-    ui.add_sized(
-        [w, 32.0],
-        egui::SelectableLabel::new(
-            current == target,
-            egui::RichText::new(format!("  {}  {}", icon, label)).size(13.5),
-        ),
-    )
-    .clicked()
+    let (rect, resp) =
+        ui.allocate_exact_size(egui::vec2(w, 30.0), egui::Sense::click());
+    let selected = current == target;
+    let hovered = resp.hovered();
+    if ui.is_rect_visible(rect) {
+        let acc = accent(ui);
+        let p = ui.painter().with_clip_rect(rect);
+        if selected {
+            p.rect_filled(rect.shrink(1.0), 7.0, acc.gamma_multiply(0.18));
+        } else if hovered {
+            p.rect_filled(
+                rect.shrink(1.0),
+                7.0,
+                ui.visuals().faint_bg_color.gamma_multiply(1.4),
+            );
+        }
+        let col = if selected {
+            acc
+        } else if hovered {
+            ui.visuals().text_color()
+        } else {
+            ui.visuals().text_color().gamma_multiply(0.72)
+        };
+        paint_glyph(
+            &p,
+            egui::pos2(rect.min.x + 16.0, rect.center().y),
+            7.0,
+            g,
+            col,
+        );
+        p.text(
+            egui::pos2(rect.min.x + 32.0, rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            label,
+            egui::FontId::proportional(13.0),
+            col,
+        );
+    }
+    if hovered {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    resp.clicked()
 }
 
 fn nav_section(ui: &mut egui::Ui, label: &str) {
@@ -253,7 +406,7 @@ fn start_ring(
 fn tool_tile(
     ui: &mut egui::Ui,
     width: f32,
-    icon: &str,
+    icon: Glyph,
     title: &str,
     desc: &str,
 ) -> egui::Response {
@@ -279,13 +432,7 @@ fn tool_tile(
 
         let icon_c = rect.min + egui::vec2(32.0, 30.0);
         p.circle_filled(icon_c, 15.0, accent.gamma_multiply(0.14));
-        p.text(
-            icon_c,
-            egui::Align2::CENTER_CENTER,
-            icon,
-            egui::FontId::proportional(15.0),
-            accent,
-        );
+        paint_glyph(&p, icon_c, 8.0, icon, accent);
         p.text(
             rect.min + egui::vec2(58.0, 18.0),
             egui::Align2::LEFT_TOP,
@@ -305,6 +452,18 @@ fn tool_tile(
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
     resp
+}
+
+/// Human label for a schedule interval in hours.
+fn schedule_interval_label(hours: u32) -> &'static str {
+    match hours {
+        1 => "1 hour",
+        6 => "6 hours",
+        12 => "12 hours",
+        24 => "24 hours (daily)",
+        168 => "7 days (weekly)",
+        _ => "24 hours (daily)",
+    }
 }
 
 /// Little bar chart: files cleaned per day over the last week.
@@ -396,6 +555,8 @@ pub struct CleanerApp {
     pub confirm_body: String,
     pub theme_anim: themes::ThemeAnim,
     pub pending_theme_change: Option<themes::Theme>,
+    /// Set when a scheduled scan should auto-clean once its results arrive.
+    pub pending_auto_clean: bool,
     pub initial_theme_applied: bool,
 
     pub custom: CustomCleanerState,
@@ -437,6 +598,7 @@ impl Default for CleanerApp {
             theme_anim: themes::ThemeAnim::new(initial_visuals),
             initial_theme_applied: false,
             pending_theme_change: None,
+            pending_auto_clean: false,
             custom: CustomCleanerState::default(),
             duplicates: DuplicateState::default(),
             large_files: LargeFilesState::default(),
@@ -568,7 +730,38 @@ impl CleanerApp {
         self.theme_anim.start(from, to, now);
         self.settings.theme = new_theme;
         self.settings.save();
+        // Rebuild the app icon so its background follows the theme.
+        ctx.send_viewport_cmd(egui::ViewportCommand::Icon(Some(
+            themes::generate_icon(new_theme),
+        )));
         self.add_log(&format!("Theme changed to {}", new_theme.label()));
+    }
+
+    /// Fire a scheduled scan if one is due. Runs at most once per interval
+    /// and only while the app is open.
+    fn maybe_run_scheduled(&mut self) {
+        if !self.settings.schedule_enabled || self.busy() {
+            return;
+        }
+        let interval = (self.settings.schedule_hours.max(1) as i64) * 3600;
+        let now = Local::now().timestamp();
+        if self.settings.schedule_last_run + interval > now {
+            return;
+        }
+        self.settings.schedule_last_run = now;
+        self.settings.save();
+        self.add_log("Scheduled scan triggered.");
+        self.pending_auto_clean = self.settings.schedule_auto_clean;
+        match self.settings.schedule_target {
+            crate::settings::ScheduleTarget::System => {
+                self.tab = Tab::SystemCleaner;
+                self.start_system_scan();
+            }
+            crate::settings::ScheduleTarget::Custom => {
+                self.tab = Tab::CustomClean;
+                self.start_custom_scan();
+            }
+        }
     }
 }
 
@@ -967,6 +1160,17 @@ impl CleanerApp {
                         if self.scanning {
                             self.scanning = false;
                             self.last_scan_summary = summary;
+                            if self.pending_auto_clean {
+                                self.pending_auto_clean = false;
+                                if self.settings.dry_run {
+                                    self.add_log(
+                                        "Scheduled auto-clean skipped — dry run is on.",
+                                    );
+                                } else {
+                                    self.add_log("Scheduled auto-clean starting...");
+                                    self.start_clean_selected();
+                                }
+                            }
                         }
                         self.cleaning = false;
                         self.progress = 0.0;
@@ -1119,20 +1323,20 @@ impl CleanerApp {
 
         // Tool tiles — quick navigation, like the reference layout.
         card(ui, "Tools", |ui| {
-            let tiles: [(Tab, &str, &str, &str); 6] = [
-                (Tab::CustomClean, "🧹", "Custom Clean", "Filter and clean any folder"),
-                (Tab::Duplicates, "📑", "Duplicates", "Find and remove copies"),
-                (Tab::LargeFiles, "📁", "Large Files", "Locate the space hogs"),
-                (Tab::SystemCleaner, "🖥", "System Cleaner", "Temp files and caches"),
-                (Tab::EmptyFolders, "🗑", "Empty Folders", "Cascade-aware cleanup"),
-                (Tab::FolderSizes, "📊", "Folder Sizes", "See where space went"),
+            let tiles: [(Tab, Glyph, &str, &str); 6] = [
+                (Tab::CustomClean, Glyph::Broom, "Custom Clean", "Filter and clean any folder"),
+                (Tab::Duplicates, Glyph::Copy, "Duplicates", "Find and remove copies"),
+                (Tab::LargeFiles, Glyph::File, "Large Files", "Locate the space hogs"),
+                (Tab::SystemCleaner, Glyph::Screen, "System Cleaner", "Temp files and caches"),
+                (Tab::EmptyFolders, Glyph::Trash, "Empty Folders", "Cascade-aware cleanup"),
+                (Tab::FolderSizes, Glyph::Chart, "Folder Sizes", "See where space went"),
             ];
             let tw = ((ui.available_width() - 16.0) / 3.0).max(60.0);
             let mut go: Option<Tab> = None;
             for row in tiles.chunks(3) {
                 ui.horizontal(|ui| {
                     for (i, (t, icon, title, desc)) in row.iter().enumerate() {
-                        if tool_tile(ui, tw, icon, title, desc).clicked() {
+                        if tool_tile(ui, tw, *icon, title, desc).clicked() {
                             go = Some(*t);
                         }
                         if i + 1 < row.len() {
@@ -1243,6 +1447,99 @@ impl CleanerApp {
                 .changed()
             {
                 self.settings.save();
+            }
+        });
+
+        ui.add_space(10.0);
+
+        // Scheduled scans
+        card(ui, "Scheduler", |ui| {
+            ui.horizontal_wrapped(|ui| {
+                let (r, _) =
+                    ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
+                paint_glyph(
+                    &ui.painter().with_clip_rect(r),
+                    r.center(),
+                    7.5,
+                    Glyph::Clock,
+                    accent(ui),
+                );
+                if ui
+                    .checkbox(&mut self.settings.schedule_enabled, "Run on a schedule")
+                    .changed()
+                {
+                    self.settings.save();
+                }
+                ui.label("every");
+                let mut h = self.settings.schedule_hours;
+                egui::ComboBox::from_id_source("sched_hours")
+                    .selected_text(schedule_interval_label(h))
+                    .show_ui(ui, |ui| {
+                        for opt in [1u32, 6, 12, 24, 168] {
+                            if ui
+                                .selectable_label(h == opt, schedule_interval_label(opt))
+                                .clicked()
+                            {
+                                h = opt;
+                            }
+                        }
+                    });
+                if h != self.settings.schedule_hours {
+                    self.settings.schedule_hours = h;
+                    self.settings.save();
+                }
+                ui.label("on");
+                let mut t = self.settings.schedule_target;
+                egui::ComboBox::from_id_source("sched_target")
+                    .selected_text(t.label())
+                    .show_ui(ui, |ui| {
+                        for o in crate::settings::ScheduleTarget::all() {
+                            if ui.selectable_label(t == *o, o.label()).clicked() {
+                                t = *o;
+                            }
+                        }
+                    });
+                if t != self.settings.schedule_target {
+                    self.settings.schedule_target = t;
+                    self.settings.save();
+                }
+                if ui
+                    .checkbox(
+                        &mut self.settings.schedule_auto_clean,
+                        "auto-clean after scan",
+                    )
+                    .changed()
+                {
+                    self.settings.save();
+                }
+            });
+            if self.settings.schedule_enabled {
+                let next = if self.settings.schedule_last_run == 0 {
+                    "first run on the next check".to_string()
+                } else {
+                    let ts = self.settings.schedule_last_run
+                        + self.settings.schedule_hours.max(1) as i64 * 3600;
+                    match Local.timestamp_opt(ts, 0).single() {
+                        Some(dt) => format!("next run {}", dt.format("%Y-%m-%d %H:%M")),
+                        None => "next run soon".to_string(),
+                    }
+                };
+                ui.label(
+                    egui::RichText::new(format!(
+                        "{} — runs while the app is open.",
+                        next
+                    ))
+                    .weak()
+                    .small(),
+                );
+            } else {
+                ui.label(
+                    egui::RichText::new(
+                        "Off. When enabled, a scan runs automatically while the app is open.",
+                    )
+                    .weak()
+                    .small(),
+                );
             }
         });
 
@@ -2177,6 +2474,11 @@ impl eframe::App for CleanerApp {
 
         self.update_theme_animation(ctx);
         self.poll_messages(ctx);
+        self.maybe_run_scheduled();
+        if self.settings.schedule_enabled {
+            // Wake up periodically so due scans fire even when idle.
+            ctx.request_repaint_after(std::time::Duration::from_secs(30));
+        }
 
         if self.status_toast > 0 {
             self.status_toast -= 1;
@@ -2213,40 +2515,40 @@ impl eframe::App for CleanerApp {
                 ui.add_space(16.0);
 
                 nav_section(ui, "OVERVIEW");
-                if nav_item(ui, self.tab, Tab::Dashboard, "🏠", "Dashboard") {
+                if nav_item(ui, self.tab, Tab::Dashboard, Glyph::House, "Dashboard") {
                     self.tab = Tab::Dashboard;
                 }
-                if nav_item(ui, self.tab, Tab::FolderSizes, "📊", "Folder Sizes") {
+                if nav_item(ui, self.tab, Tab::FolderSizes, Glyph::Chart, "Folder Sizes") {
                     self.tab = Tab::FolderSizes;
                 }
-                if nav_item(ui, self.tab, Tab::Storage, "💾", "Storage") {
+                if nav_item(ui, self.tab, Tab::Storage, Glyph::Disk, "Storage") {
                     self.tab = Tab::Storage;
                 }
 
                 ui.add_space(8.0);
                 nav_section(ui, "CLEANING");
-                if nav_item(ui, self.tab, Tab::CustomClean, "🧹", "Custom Clean") {
+                if nav_item(ui, self.tab, Tab::CustomClean, Glyph::Broom, "Custom Clean") {
                     self.tab = Tab::CustomClean;
                 }
-                if nav_item(ui, self.tab, Tab::Duplicates, "📑", "Duplicates") {
+                if nav_item(ui, self.tab, Tab::Duplicates, Glyph::Copy, "Duplicates") {
                     self.tab = Tab::Duplicates;
                 }
-                if nav_item(ui, self.tab, Tab::LargeFiles, "📁", "Large Files") {
+                if nav_item(ui, self.tab, Tab::LargeFiles, Glyph::File, "Large Files") {
                     self.tab = Tab::LargeFiles;
                 }
-                if nav_item(ui, self.tab, Tab::SystemCleaner, "🖥", "System Cleaner") {
+                if nav_item(ui, self.tab, Tab::SystemCleaner, Glyph::Screen, "System Cleaner") {
                     self.tab = Tab::SystemCleaner;
                 }
-                if nav_item(ui, self.tab, Tab::EmptyFolders, "🗑", "Empty Folders") {
+                if nav_item(ui, self.tab, Tab::EmptyFolders, Glyph::Trash, "Empty Folders") {
                     self.tab = Tab::EmptyFolders;
                 }
 
                 ui.add_space(8.0);
                 nav_section(ui, "APP");
-                if nav_item(ui, self.tab, Tab::Changelog, "📋", "Changelog") {
+                if nav_item(ui, self.tab, Tab::Changelog, Glyph::List, "Changelog") {
                     self.tab = Tab::Changelog;
                 }
-                if nav_item(ui, self.tab, Tab::About, "ℹ", "About") {
+                if nav_item(ui, self.tab, Tab::About, Glyph::Info, "About") {
                     self.tab = Tab::About;
                 }
 

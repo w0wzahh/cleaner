@@ -25,6 +25,8 @@ look before you leap.
 - **Folder sizes** — ranks a folder's subfolders by total size so you can
   see exactly where the space went.
 - **Storage overview** — per-drive usage bars so you can see what's full.
+- **Scheduled scans** — run a scan every hour, 6/12/24 hours, or weekly while
+  the app is open, with an optional auto-clean afterwards.
 - **Command line** — `cleaner scan-custom <dir>`, `cleaner clean-system --yes`
   and friends, for scripting or Task Scheduler. `cleaner help` lists them all.
 

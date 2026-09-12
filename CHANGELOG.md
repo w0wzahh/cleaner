@@ -12,7 +12,25 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Things planned for the next release. Nothing here is final yet.
 
-- Scheduled scans (run on a timer in the background)
+---
+
+## [2.7.0] — 2026-09-12
+
+New app icon and scheduled scans.
+
+### Added
+- **Scheduled scans**: the Scheduler card on the dashboard runs a scan every
+  1/6/12/24 hours or weekly — on System junk or your Custom Clean folder —
+  while the app is open. Optional auto-clean follows the scan (skipped when
+  dry run is on).
+- **Real app icon**: the window and taskbar icon is now the broom artwork,
+  with its background tinted to a light shade of the active theme's accent.
+  Switching themes recolors the icon live.
+
+### Changed
+- Sidebar and dashboard tile icons are hand-drawn line glyphs instead of
+  emoji — they render identically on every machine (some emoji were showing
+  up as empty boxes).
 
 ---
 
@@ -215,7 +233,8 @@ but it's where all of this started.
 
 ---
 
-[Unreleased]: https://github.com/w0wzahh/cleaner/compare/v2.6.0...HEAD
+[Unreleased]: https://github.com/w0wzahh/cleaner/compare/v2.7.0...HEAD
+[2.7.0]: https://github.com/w0wzahh/cleaner/compare/v2.6.0...v2.7.0
 [2.6.0]: https://github.com/w0wzahh/cleaner/compare/v2.5.0...v2.6.0
 [2.5.0]: https://github.com/w0wzahh/cleaner/compare/v2.4.1...v2.5.0
 [2.4.1]: https://github.com/w0wzahh/cleaner/compare/v2.4.0...v2.4.1

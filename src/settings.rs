@@ -36,6 +36,50 @@ pub struct Settings {
     /// Timestamp of the last real clean, for display.
     #[serde(default)]
     pub last_clean: String,
+    /// Scheduled scans — run automatically every N hours while the app is open.
+    #[serde(default)]
+    pub schedule_enabled: bool,
+    #[serde(default = "default_schedule_hours")]
+    pub schedule_hours: u32,
+    #[serde(default)]
+    pub schedule_target: ScheduleTarget,
+    /// If true, a scheduled scan is followed by a real clean (honors dry run —
+    /// with dry run on it only previews).
+    #[serde(default)]
+    pub schedule_auto_clean: bool,
+    /// Unix timestamp of the last scheduled run (0 = never).
+    #[serde(default)]
+    pub schedule_last_run: i64,
+}
+
+fn default_schedule_hours() -> u32 {
+    24
+}
+
+/// What a scheduled scan operates on.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ScheduleTarget {
+    System,
+    Custom,
+}
+
+impl Default for ScheduleTarget {
+    fn default() -> Self {
+        Self::System
+    }
+}
+
+impl ScheduleTarget {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::System => "System junk",
+            Self::Custom => "Custom folder",
+        }
+    }
+
+    pub fn all() -> &'static [ScheduleTarget] {
+        &[Self::System, Self::Custom]
+    }
 }
 
 impl Default for Settings {
@@ -57,6 +101,11 @@ impl Default for Settings {
             total_space_freed: 0,
             clean_history: std::collections::BTreeMap::new(),
             last_clean: String::new(),
+            schedule_enabled: false,
+            schedule_hours: 24,
+            schedule_target: ScheduleTarget::System,
+            schedule_auto_clean: false,
+            schedule_last_run: 0,
         }
     }
 }
