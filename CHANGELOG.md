@@ -14,6 +14,37 @@ Things planned for the next release. Nothing here is final yet.
 
 ---
 
+## [2.11.0] — 2026-09-13
+
+Second polish pass — startup integration, smarter duplicate selection,
+and more interactive surfaces.
+
+### Added
+- **"Keep newest" / "Keep oldest" on the Duplicates tab** — one click
+  selects every duplicate except the newest (or oldest) copy in each
+  group. The group's "keep" marker moves to the right file.
+- **"Run Cleaner when Windows starts"** — a per-user Run-key entry (no
+  admin needed), managed from the new Startup card on the Dashboard.
+- **"Start minimized to the system tray"** setting + a `--minimized`
+  launch flag the startup entry uses.
+- **Taskbar flash on completion** — when a scan or clean finishes while
+  the window isn't focused, the taskbar button flashes.
+- **Empty Folders results get a filter box**, and its rows get the same
+  double-click / right-click reveal as the file lists.
+- **Folder Sizes entries are clickable** — double-click or right-click a
+  bar to reveal that folder in Explorer.
+- **F5 rescans** the current tab.
+
+### Improved
+- **Every tab's scan directory now persists** across restarts — Custom,
+  Duplicates, Large Files, Empty Folders, and Folder Sizes no longer
+  reset to the default folder on launch.
+- **The confirm dialog states the delete mode** — "goes to the Recycle
+  Bin" vs "permanently deleted" vs "secure delete (3-pass)" — so the
+  stakes are visible at the decision point.
+
+---
+
 ## [2.10.0] — 2026-09-13
 
 Polish pass — usability and quality-of-life improvements, no behavior

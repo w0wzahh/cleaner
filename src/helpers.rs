@@ -633,6 +633,58 @@ pub fn unregister_task() -> Result<(), String> {
 }
 
 // -----------------------------------------------------------------------------
+// Launch at startup — the HKCU Run key, managed through reg.exe. Per-user,
+// no admin, no extra dependencies — same approach as the schtasks section.
+// -----------------------------------------------------------------------------
+
+const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+const RUN_VALUE: &str = "Cleaner";
+
+/// Is Cleaner currently set to launch at login?
+pub fn startup_registered() -> bool {
+    std::process::Command::new("reg")
+        .args(["query", RUN_KEY, "/v", RUN_VALUE])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Add or remove the Run-key entry. `minimized` appends `--minimized` so the
+/// GUI starts parked in the tray instead of showing a window at login.
+/// Returns Err with the reg.exe output on failure.
+pub fn set_startup(enable: bool, minimized: bool) -> Result<(), String> {
+    if enable {
+        let exe = std::env::current_exe()
+            .map_err(|e| format!("can't locate exe: {}", e))?;
+        let mut val = format!("\"{}\"", exe.display());
+        if minimized {
+            val.push_str(" --minimized");
+        }
+        let out = std::process::Command::new("reg")
+            .args([
+                "add", RUN_KEY, "/v", RUN_VALUE, "/t", "REG_SZ", "/d", &val, "/f",
+            ])
+            .output()
+            .map_err(|e| e.to_string())?;
+        if out.status.success() {
+            Ok(())
+        } else {
+            Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+        }
+    } else {
+        let out = std::process::Command::new("reg")
+            .args(["delete", RUN_KEY, "/v", RUN_VALUE, "/f"])
+            .output()
+            .map_err(|e| e.to_string())?;
+        if out.status.success() || !startup_registered() {
+            Ok(())
+        } else {
+            Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
 // Win32 window control for the tray feature.
 //
 // egui's viewport command queue is only drained on repaint events, and a
@@ -665,6 +717,8 @@ mod win32_window {
         ) -> i32;
         fn GetWindowPlacement(hwnd: isize, placement: *mut WindowPlacement) -> i32;
         fn SetWindowPlacement(hwnd: isize, placement: *const WindowPlacement) -> i32;
+        fn GetForegroundWindow() -> isize;
+        fn FlashWindowEx(info: *const FlashWindowInfo) -> i32;
     }
 
     #[repr(C)]
@@ -675,6 +729,15 @@ mod win32_window {
         min_position: [i32; 2],
         max_position: [i32; 2],
         normal_position: [i32; 4],
+    }
+
+    #[repr(C)]
+    struct FlashWindowInfo {
+        cb_size: u32,
+        hwnd: isize,
+        flags: u32,
+        count: u32,
+        timeout: u32,
     }
 
     const SW_SHOW: i32 = 5;
@@ -689,6 +752,7 @@ mod win32_window {
     const SWP_NOZORDER: u32 = 0x0004;
     const SWP_NOACTIVATE: u32 = 0x0010;
     const SWP_FRAMECHANGED: u32 = 0x0020;
+    const SWP_SHOWWINDOW: u32 = 0x0040;
 
     static MAIN_HWND: AtomicIsize = AtomicIsize::new(0);
     static SAVED_PLACEMENT: Mutex<Option<WindowPlacement>> = Mutex::new(None);
@@ -733,6 +797,9 @@ mod win32_window {
                 GWL_EXSTYLE,
                 (ex | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE) & !WS_EX_APPWINDOW,
             );
+            // SWP_SHOWWINDOW makes a window that started hidden (the
+            // --minimized launch path) visible-to-the-OS while parked, so
+            // WM_PAINT still flows. Harmless when already visible.
             SetWindowPos(
                 h,
                 0,
@@ -740,7 +807,11 @@ mod win32_window {
                 -32000,
                 0,
                 0,
-                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+                SWP_NOSIZE
+                    | SWP_NOZORDER
+                    | SWP_NOACTIVATE
+                    | SWP_FRAMECHANGED
+                    | SWP_SHOWWINDOW,
             );
         }
     }
@@ -790,6 +861,29 @@ mod win32_window {
             }
         }
     }
+
+    /// Flash the taskbar button — used when a long operation finishes while
+    /// the window isn't focused. No-op when the window is focused or parked
+    /// (a tool window has no taskbar button to flash anyway).
+    pub fn flash_main_window() {
+        let h = hwnd();
+        if h == 0 {
+            return;
+        }
+        unsafe {
+            if GetForegroundWindow() == h {
+                return;
+            }
+            let info = FlashWindowInfo {
+                cb_size: std::mem::size_of::<FlashWindowInfo>() as u32,
+                hwnd: h,
+                flags: 0x0000_0003, // FLASHW_ALL — caption + taskbar button
+                count: 5,
+                timeout: 0,
+            };
+            FlashWindowEx(&info);
+        }
+    }
 }
 
 #[cfg(windows)]
@@ -809,3 +903,5 @@ pub fn hide_main_window() {}
 pub fn show_main_window() {}
 #[cfg(not(windows))]
 pub fn close_main_window() {}
+#[cfg(not(windows))]
+pub fn flash_main_window() {}

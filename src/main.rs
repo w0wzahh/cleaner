@@ -32,13 +32,23 @@ fn main() -> Result<(), eframe::Error> {
     // Any command-line argument means headless mode; no args = GUI.
     // args_os + lossy conversion — std::env::args() panics on non-UTF8
     // arguments, which Windows paths can legitimately contain.
+    // `--minimized`/`--tray` are GUI-mode flags (used by the Windows
+    // startup entry) — everything else goes to the CLI.
     let args: Vec<String> = std::env::args_os()
         .skip(1)
         .map(|a| a.to_string_lossy().into_owned())
         .collect();
-    if !args.is_empty() {
+    let gui_minimized = args
+        .iter()
+        .any(|a| a == "--minimized" || a == "--tray");
+    let cli_args: Vec<String> = args
+        .iter()
+        .filter(|a| a.as_str() != "--minimized" && a.as_str() != "--tray")
+        .cloned()
+        .collect();
+    if !cli_args.is_empty() {
         attach_parent_console();
-        std::process::exit(cleaner::cli::run(&args));
+        std::process::exit(cleaner::cli::run(&cli_args));
     }
 
     let icon = themes::generate_icon();
@@ -52,7 +62,7 @@ fn main() -> Result<(), eframe::Error> {
     eframe::run_native(
         "Cleaner",
         options,
-        Box::new(|cc| {
+        Box::new(move |cc| {
             // Stash the Win32 HWND so the tray can show/hide the window
             // directly — egui viewport commands aren't processed while the
             // window is invisible (egui#3655/#5229).
@@ -65,7 +75,9 @@ fn main() -> Result<(), eframe::Error> {
                     }
                 }
             }
-            Box::new(CleanerApp::default())
+            let mut app = CleanerApp::default();
+            app.start_in_tray |= gui_minimized;
+            Box::new(app)
         }),
     )
 }

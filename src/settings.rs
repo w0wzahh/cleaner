@@ -89,6 +89,24 @@ pub struct Settings {
     /// Large Files size threshold (MB), persisted.
     #[serde(default = "default_large_threshold")]
     pub large_threshold_mb: u64,
+    /// Start the GUI parked in the system tray instead of showing a window.
+    #[serde(default)]
+    pub start_minimized: bool,
+    /// Launch Cleaner when Windows starts (HKCU Run key).
+    #[serde(default)]
+    pub run_at_startup: bool,
+    /// Per-tab scan directories, persisted so they survive restarts.
+    /// Empty means "use `default_dir`".
+    #[serde(default)]
+    pub dir_custom: String,
+    #[serde(default)]
+    pub dir_duplicates: String,
+    #[serde(default)]
+    pub dir_large_files: String,
+    #[serde(default)]
+    pub dir_empty_folders: String,
+    #[serde(default)]
+    pub dir_folder_sizes: String,
 }
 
 fn default_schedule_hours() -> u32 {
@@ -176,6 +194,13 @@ impl Default for Settings {
             custom_max_size: 0,
             custom_exclude_dirs: String::new(),
             large_threshold_mb: 100,
+            start_minimized: false,
+            run_at_startup: false,
+            dir_custom: String::new(),
+            dir_duplicates: String::new(),
+            dir_large_files: String::new(),
+            dir_empty_folders: String::new(),
+            dir_folder_sizes: String::new(),
         }
     }
 }

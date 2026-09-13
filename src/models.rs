@@ -11,6 +11,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.11.0] - 2026-09-13
+### Added
+- Second polish pass. "Keep newest" / "Keep oldest" one-click selection
+  on the Duplicates tab; "Run when Windows starts" (per-user Run key)
+  and "start minimized to tray" options with a --minimized launch flag;
+  taskbar flash when a scan or clean finishes while unfocused; filter
+  box on Empty Folders results; Folder Sizes bars reveal their folder on
+  double-click; F5 rescans the current tab.
+
+### Improved
+- Every tab's scan directory now persists across restarts, and the
+  confirm dialog states the delete mode (Recycle Bin vs permanent vs
+  secure) so the stakes are visible at the decision point.
+
 ## [2.10.0] - 2026-09-13
 ### Added
 - Polish pass. Result rows are now interactive: double-click to reveal a
@@ -558,6 +572,8 @@ impl Default for SystemCleanerState {
 pub struct EmptyFoldersState {
     pub dir_path: String,
     pub folders: Vec<std::path::PathBuf>,
+    /// Filter box text on the results list.
+    pub filter: String,
 }
 
 impl Default for EmptyFoldersState {
@@ -565,6 +581,7 @@ impl Default for EmptyFoldersState {
         Self {
             dir_path: crate::settings::default_dir().to_string(),
             folders: Vec::new(),
+            filter: String::new(),
         }
     }
 }
@@ -582,6 +599,8 @@ pub struct DiskEntry {
 #[derive(Clone, Debug)]
 pub struct FolderSizeEntry {
     pub name: String,
+    /// Where the entry lives on disk — used by the reveal-on-double-click.
+    pub path: std::path::PathBuf,
     pub size: u64,
 }
 

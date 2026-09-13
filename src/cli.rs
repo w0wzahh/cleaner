@@ -51,6 +51,7 @@ OTHER FLAGS:
   --permanent        Delete permanently instead of using the recycle bin
   --secure           3-pass overwrite before deletion
   --force            Delete for real even if dry run is enabled in settings
+  --minimized        Launch the GUI parked in the system tray (startup)
 
 NOTE: clean commands honor your saved settings — if "Dry run" is enabled in
 the app, clean-* commands only preview unless you pass --force.

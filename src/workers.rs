@@ -480,7 +480,7 @@ pub fn folder_sizes_worker(
 
     let _ = tx.send(WorkerMessage::Log("Analyzing folder sizes...".to_string()));
 
-    let mut map: HashMap<String, u64> = HashMap::new();
+    let mut map: HashMap<String, (u64, PathBuf)> = HashMap::new();
     let mut total = 0u64;
     let mut seen = 0usize;
     let protected = helpers::prep_excludes(&protected);
@@ -501,20 +501,22 @@ pub fn folder_sizes_worker(
             }
             if let Ok(meta) = fs::metadata(path) {
                 let size = meta.len();
-                let key = path
+                let (key, key_path) = path
                     .strip_prefix(&dir)
                     .ok()
                     .and_then(|rel| {
                         let mut it = rel.components();
                         let first = it.next()?;
                         Some(if it.next().is_none() {
-                            "(files in root)".to_string()
+                            ("(files in root)".to_string(), dir.clone())
                         } else {
-                            first.as_os_str().to_string_lossy().into_owned()
+                            let name = first.as_os_str().to_string_lossy().into_owned();
+                            (name.clone(), dir.join(name))
                         })
                     })
-                    .unwrap_or_else(|| "(other)".to_string());
-                *map.entry(key).or_default() += size;
+                    .unwrap_or_else(|| ("(other)".to_string(), dir.clone()));
+                let ent = map.entry(key).or_insert_with(|| (0, key_path));
+                ent.0 += size;
                 total += size;
                 seen += 1;
                 if seen % 5000 == 0 {
@@ -529,7 +531,7 @@ pub fn folder_sizes_worker(
 
     let mut entries: Vec<FolderSizeEntry> = map
         .into_iter()
-        .map(|(name, size)| FolderSizeEntry { name, size })
+        .map(|(name, (size, path))| FolderSizeEntry { name, path, size })
         .collect();
     entries.sort_by(|a, b| b.size.cmp(&a.size));
     entries.truncate(40);

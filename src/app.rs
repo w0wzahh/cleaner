@@ -421,6 +421,39 @@ fn matched_file_rows(ui: &mut egui::Ui, files: &[&MatchedFile], id: &str) {
         });
 }
 
+/// Reorder each duplicate group so the newest (or oldest) copy lands at
+/// index 0 — the slot the UI marks "keep" — then select the rest for
+/// deletion. Files whose metadata can't be read stay put.
+fn dupes_select_keeping(groups: &mut [DuplicateGroup], keep_newest: bool) -> Vec<PathBuf> {
+    for g in groups.iter_mut() {
+        let mut keep = 0usize;
+        let mut best: Option<std::time::SystemTime> = None;
+        for (i, p) in g.files.iter().enumerate() {
+            if let Ok(t) = fs::metadata(p).and_then(|m| m.modified()) {
+                let better = match best {
+                    None => true,
+                    Some(b) => {
+                        if keep_newest {
+                            t > b
+                        } else {
+                            t < b
+                        }
+                    }
+                };
+                if better {
+                    best = Some(t);
+                    keep = i;
+                }
+            }
+        }
+        g.files.swap(0, keep);
+    }
+    groups
+        .iter()
+        .flat_map(|g| g.files.iter().skip(1).cloned())
+        .collect()
+}
+
 /// Row-level file interactions: double-click reveals the file, right-click
 /// offers Copy path / Reveal in Explorer.
 fn file_row_menu(resp: &egui::Response, path: &Path) {
@@ -701,6 +734,9 @@ pub struct CleanerApp {
     pub window_title: String,
     /// When the current scan/clean started — used for elapsed-time logging.
     pub op_started: Option<Instant>,
+    /// Park the window in the tray on the first frame (setting or
+    /// `--minimized` launch flag). Consumed once the tray is ready.
+    pub start_in_tray: bool,
 
     pub custom: CustomCleanerState,
     pub duplicates: DuplicateState,
@@ -750,6 +786,7 @@ impl Default for CleanerApp {
             tray_tooltip: "Cleaner".to_string(),
             window_title: "Cleaner".to_string(),
             op_started: None,
+            start_in_tray: false,
             custom: CustomCleanerState::default(),
             duplicates: DuplicateState::default(),
             large_files: LargeFilesState::default(),
@@ -784,6 +821,23 @@ impl Default for CleanerApp {
         app.custom.max_size_bytes = app.settings.custom_max_size;
         app.custom.exclude_dirs = app.settings.custom_exclude_dirs.clone();
         app.large_files.threshold_mb = app.settings.large_threshold_mb;
+        // Per-tab directories override the shared default when persisted.
+        if !app.settings.dir_custom.is_empty() {
+            app.custom.dir_path = app.settings.dir_custom.clone();
+        }
+        if !app.settings.dir_duplicates.is_empty() {
+            app.duplicates.dir_path = app.settings.dir_duplicates.clone();
+        }
+        if !app.settings.dir_large_files.is_empty() {
+            app.large_files.dir_path = app.settings.dir_large_files.clone();
+        }
+        if !app.settings.dir_empty_folders.is_empty() {
+            app.empty_folders.dir_path = app.settings.dir_empty_folders.clone();
+        }
+        if !app.settings.dir_folder_sizes.is_empty() {
+            app.folder_sizes.dir_path = app.settings.dir_folder_sizes.clone();
+        }
+        app.start_in_tray = app.settings.start_minimized;
         app.rebuild_custom_targets();
         app
     }
@@ -1103,6 +1157,7 @@ impl CleanerApp {
         self.settings.custom_min_size = self.custom.min_size_bytes;
         self.settings.custom_max_size = self.custom.max_size_bytes;
         self.settings.custom_exclude_dirs = self.custom.exclude_dirs.clone();
+        self.settings.dir_custom = self.custom.dir_path.clone();
         self.settings.save();
         self.scanning = true;
         self.op_started = Some(Instant::now());
@@ -1139,6 +1194,7 @@ impl CleanerApp {
         if self.busy() {
             return;
         }
+        self.settings.dir_duplicates = self.duplicates.dir_path.clone();
         self.settings.save();
         self.scanning = true;
         self.op_started = Some(Instant::now());
@@ -1166,6 +1222,7 @@ impl CleanerApp {
             return;
         }
         self.settings.large_threshold_mb = self.large_files.threshold_mb;
+        self.settings.dir_large_files = self.large_files.dir_path.clone();
         self.settings.save();
         self.scanning = true;
         self.op_started = Some(Instant::now());
@@ -1216,6 +1273,7 @@ impl CleanerApp {
         if self.busy() {
             return;
         }
+        self.settings.dir_empty_folders = self.empty_folders.dir_path.clone();
         self.settings.save();
         self.scanning = true;
         self.op_started = Some(Instant::now());
@@ -1238,6 +1296,7 @@ impl CleanerApp {
         if self.busy() {
             return;
         }
+        self.settings.dir_folder_sizes = self.folder_sizes.dir_path.clone();
         self.settings.save();
         self.scanning = true;
         self.op_started = Some(Instant::now());
@@ -1556,12 +1615,15 @@ impl CleanerApp {
                         if was_cleaning && !self.settings.dry_run {
                             self.prune_after_clean();
                         }
+                        // Nudge the user if the window isn't focused.
+                        helpers::flash_main_window();
                         still_active = false;
                     }
                     workers::WorkerMessage::Error(e) => {
                         self.add_log(&format!("ERROR: {}", e));
                         self.status = "Error".to_string();
                         self.status_toast = 120;
+                        helpers::flash_main_window();
                         self.scanning = false;
                         self.cleaning = false;
                         self.op_started = None;
@@ -2049,6 +2111,48 @@ impl CleanerApp {
 
         ui.add_space(10.0);
 
+        card(ui, "Startup", |ui| {
+            if ui
+                .checkbox(
+                    &mut self.settings.start_minimized,
+                    "Start minimized to the system tray",
+                )
+                .on_hover_text(
+                    "The window opens parked in the tray instead of on screen. \
+                     Applies the next time Cleaner launches.",
+                )
+                .changed()
+            {
+                self.settings.save();
+            }
+            let mut want_start = self.settings.run_at_startup;
+            if ui
+                .checkbox(&mut want_start, "Run Cleaner when Windows starts")
+                .on_hover_text(
+                    "Adds a per-user Run-key entry — no admin needed. \
+                     Uses the \"start minimized\" setting above.",
+                )
+                .changed()
+            {
+                match helpers::set_startup(want_start, self.settings.start_minimized) {
+                    Ok(()) => {
+                        self.settings.run_at_startup = want_start;
+                        self.settings.save();
+                        self.add_log(if want_start {
+                            "Cleaner will launch when Windows starts."
+                        } else {
+                            "Startup entry removed."
+                        });
+                    }
+                    Err(e) => {
+                        self.add_log(&format!("Couldn't update startup entry: {}", e));
+                    }
+                }
+            }
+        });
+
+        ui.add_space(10.0);
+
         card(ui, "Recent activity", |ui| {
             if self.log.is_empty() {
                 empty_state(ui, "No activity yet — start a scan to see it here.");
@@ -2421,6 +2525,30 @@ impl CleanerApp {
                 }
                 if ui
                     .add_enabled(
+                        !busy && !self.duplicates.groups.is_empty(),
+                        egui::Button::new("Keep newest"),
+                    )
+                    .on_hover_text("Keep only the most recently modified copy in each group")
+                    .clicked()
+                {
+                    self.duplicates.selected_files =
+                        dupes_select_keeping(&mut self.duplicates.groups, true);
+                    self.duplicates.total_wasted = self.dup_wasted();
+                }
+                if ui
+                    .add_enabled(
+                        !busy && !self.duplicates.groups.is_empty(),
+                        egui::Button::new("Keep oldest"),
+                    )
+                    .on_hover_text("Keep only the oldest copy in each group")
+                    .clicked()
+                {
+                    self.duplicates.selected_files =
+                        dupes_select_keeping(&mut self.duplicates.groups, false);
+                    self.duplicates.total_wasted = self.dup_wasted();
+                }
+                if ui
+                    .add_enabled(
                         !busy && !self.duplicates.selected_files.is_empty(),
                         egui::Button::new("Clear selection"),
                     )
@@ -2606,7 +2734,9 @@ impl CleanerApp {
                                                 }
                                             }
                                         }
-                                        ui.monospace(file.display().to_string());
+                                        let resp =
+                                            ui.monospace(file.display().to_string());
+                                        file_row_menu(&resp, file);
                                     });
                                 }
                             },
@@ -3027,6 +3157,20 @@ impl CleanerApp {
                 self.empty_folders.folders.len()
             ));
             ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("Filter:").weak().small());
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.empty_folders.filter)
+                        .hint_text("type to filter results")
+                        .desired_width(220.0),
+                );
+                if !self.empty_folders.filter.is_empty()
+                    && ui.small_button("Clear").clicked()
+                {
+                    self.empty_folders.filter.clear();
+                }
+            });
+            ui.add_space(4.0);
             if self.empty_folders.folders.is_empty() {
                 egui::ScrollArea::vertical()
                     .id_source("empty_folders_scroll")
@@ -3036,12 +3180,22 @@ impl CleanerApp {
                     });
                 return;
             }
+            let flt = self.empty_folders.filter.to_lowercase();
+            let view: Vec<&PathBuf> = self
+                .empty_folders
+                .folders
+                .iter()
+                .filter(|f| {
+                    flt.is_empty()
+                        || f.to_string_lossy().to_lowercase().contains(&flt)
+                })
+                .collect();
             let row_h = ui.text_style_height(&egui::TextStyle::Monospace) + 8.0;
             egui::ScrollArea::vertical()
                 .id_source("empty_folders_scroll")
                 .auto_shrink([false, false])
-                .show_rows(ui, row_h, self.empty_folders.folders.len(), |ui, range| {
-                    for f in &self.empty_folders.folders[range] {
+                .show_rows(ui, row_h, view.len(), |ui, range| {
+                    for f in &view[range] {
                         let resp = ui.monospace(f.display().to_string());
                         file_row_menu(&resp, f);
                     }
@@ -3097,7 +3251,7 @@ impl CleanerApp {
                     for e in &self.folder_sizes.entries {
                         let share = e.size as f32 / max as f32;
                         let pct = e.size as f64 / total as f64 * 100.0;
-                        ui.add(
+                        let resp = ui.add(
                             egui::ProgressBar::new(share)
                                 .fill(accent(ui))
                                 .text(format!(
@@ -3107,6 +3261,24 @@ impl CleanerApp {
                                     pct
                                 )),
                         );
+                        // Double-click / right-click to reveal the folder.
+                        resp.clone()
+                            .on_hover_text("Double-click to open in Explorer")
+                            .context_menu(|ui| {
+                                if ui.button("Reveal in Explorer").clicked() {
+                                    reveal_in_explorer(&e.path);
+                                    ui.close_menu();
+                                }
+                                if ui.button("Copy path").clicked() {
+                                    ui.ctx().output_mut(|o| {
+                                        o.copied_text = e.path.display().to_string();
+                                    });
+                                    ui.close_menu();
+                                }
+                            });
+                        if resp.double_clicked() {
+                            reveal_in_explorer(&e.path);
+                        }
                         ui.add_space(2.0);
                     }
                 });
@@ -3392,6 +3564,35 @@ impl eframe::App for CleanerApp {
         if !self.tray_setup_done {
             self.setup_tray(ctx);
         }
+        // "Start in tray" / --minimized: park once the tray icon exists.
+        // If the tray couldn't be created, show the window instead — never
+        // strand the user with an invisible app.
+        if self.start_in_tray && self.tray_setup_done {
+            self.start_in_tray = false;
+            if self.tray.is_some() {
+                self.hide_to_tray(ctx);
+            } else {
+                helpers::show_main_window();
+                ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                self.add_log("Tray icon unavailable — showing the window.");
+            }
+        }
+
+        // F5 rescan the current tab.
+        if !self.busy()
+            && self.confirm_action.is_none()
+            && ctx.input(|i| i.key_pressed(egui::Key::F5))
+        {
+            match self.tab {
+                Tab::CustomClean => self.start_custom_scan(),
+                Tab::Duplicates => self.start_duplicates_scan(),
+                Tab::LargeFiles => self.start_large_files_scan(),
+                Tab::SystemCleaner => self.start_system_scan(),
+                Tab::EmptyFolders => self.start_empty_folders_scan(),
+                Tab::FolderSizes => self.start_folder_sizes_scan(),
+                _ => {}
+            }
+        }
 
         self.update_theme_animation(ctx);
         self.poll_messages(ctx);
@@ -3651,14 +3852,32 @@ impl eframe::App for CleanerApp {
                 .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
                 .show(ctx, |ui| {
                     ui.label(&self.confirm_body);
+                    ui.add_space(4.0);
                     if self.settings.dry_run {
-                        ui.add_space(4.0);
                         ui.label(
                             egui::RichText::new(
                                 "Dry run is enabled — nothing will actually be deleted.",
                             )
                             .weak()
                             .small(),
+                        );
+                    } else if self.settings.secure_delete {
+                        ui.colored_label(
+                            danger_color(),
+                            "Secure delete is on — files are overwritten 3 times and can't be recovered.",
+                        );
+                    } else if self.settings.use_trash {
+                        ui.label(
+                            egui::RichText::new(
+                                "Files go to the Recycle Bin — you can restore them from there.",
+                            )
+                            .weak()
+                            .small(),
+                        );
+                    } else {
+                        ui.colored_label(
+                            warn_color(),
+                            "Files will be permanently deleted — no Recycle Bin.",
                         );
                     }
                     ui.add_space(10.0);
