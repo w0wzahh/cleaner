@@ -65,7 +65,9 @@ pub fn collect_files(
             return None;
         }
         if let Ok(entry) = entry {
-            if entry.path().is_file() {
+            // file_type() comes free with the directory read — is_file() on
+            // the path would stat every entry again (and follow symlinks).
+            if entry.file_type().is_file() {
                 files.push(entry.path().to_path_buf());
             }
         }
@@ -85,7 +87,10 @@ pub fn matches_glob(path: &Path, pattern: &str) -> bool {
         Err(_) => return false,
     };
     if pattern.contains('/') || pattern.contains('\\') {
-        pat.matches_path(path) || pat.matches(&path.to_string_lossy().to_lowercase())
+        // Lowercase the path too — the pattern is already lowercased and
+        // Windows paths are case-insensitive.
+        let lowered = path.to_string_lossy().to_lowercase();
+        pat.matches_path(Path::new(&lowered)) || pat.matches(&lowered)
     } else {
         let name = path
             .file_name()
@@ -99,7 +104,14 @@ pub fn matches_glob(path: &Path, pattern: &str) -> bool {
 /// trailing separators, lowercased. Windows paths are case-insensitive, so
 /// the exclusion check has to be too or "c:\foo" won't protect "C:\Foo".
 fn norm_path(p: &str) -> String {
-    let mut s = p.replace('/', "\\").to_lowercase();
+    // Strip verbatim prefixes first — a protected path entered as
+    // "\\?\C:\Keep" must still match a scanned "C:\Keep\file".
+    let stripped = if let Some(rest) = p.strip_prefix("\\\\?\\UNC\\") {
+        format!("\\\\{}", rest)
+    } else {
+        p.strip_prefix("\\\\?\\").map(|r| r.to_string()).unwrap_or_else(|| p.to_string())
+    };
+    let mut s = stripped.replace('/', "\\").to_lowercase();
     while s.ends_with('\\') && s.len() > 3 {
         s.pop();
     }
@@ -170,6 +182,26 @@ impl SimpleRng {
     }
 }
 
+/// Delete a file, retrying once via the `\\?\` verbatim path on failure —
+/// plain remove_file rejects paths longer than MAX_PATH (260 chars) and
+/// odd reserved names, and fs::canonicalize hands back a verbatim path
+/// that bypasses both limits. trash::delete already canonicalizes
+/// internally, so this is only needed for the permanent-delete path.
+pub fn remove_file_long(path: &Path) -> Result<(), String> {
+    fs::remove_file(path).or_else(|e| {
+        let canon = fs::canonicalize(path).map_err(|_| e.to_string())?;
+        fs::remove_file(&canon).map_err(|e2| e2.to_string())
+    })
+}
+
+/// Same retry for removing an empty directory.
+pub fn remove_dir_long(path: &Path) -> Result<(), String> {
+    fs::remove_dir(path).or_else(|e| {
+        let canon = fs::canonicalize(path).map_err(|_| e.to_string())?;
+        fs::remove_dir(&canon).map_err(|e2| e2.to_string())
+    })
+}
+
 pub fn shred_file(path: &Path) -> Result<(), String> {
     let meta = fs::metadata(path).map_err(|e| e.to_string())?;
     let size = meta.len();
@@ -183,7 +215,12 @@ pub fn shred_file(path: &Path) -> Result<(), String> {
         .unwrap_or(0xDEADBEEF);
     let mut rng = SimpleRng::new(seed);
 
-    let mut file = File::create(path).map_err(|e| e.to_string())?;
+    // File::create also refuses long paths — fall back to the verbatim
+    // form so secure delete works deep in temp trees.
+    let file_res = File::create(path).or_else(|_| {
+        fs::canonicalize(path).and_then(|c| File::create(&c))
+    });
+    let mut file = file_res.map_err(|e| e.to_string())?;
 
     let chunk_size: usize = 64 * 1024;
     let mut buf = vec![0u8; chunk_size];
@@ -315,12 +352,11 @@ pub fn scan_large_files(
             return None;
         }
         if let Ok(entry) = entry {
-            let path = entry.path();
-            if path.is_file() {
-                if let Ok(meta) = fs::metadata(path) {
+            if entry.file_type().is_file() {
+                if let Ok(meta) = fs::metadata(entry.path()) {
                     if meta.len() > threshold {
                         large_files.push(LargeFile {
-                            path: path.to_path_buf(),
+                            path: entry.path().to_path_buf(),
                             size: meta.len(),
                         });
                     }

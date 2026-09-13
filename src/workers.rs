@@ -186,14 +186,20 @@ pub fn duplicates_worker(
     let mut total_files = 0;
     let mut skipped_excluded = 0u64;
 
-    for entry in WalkDir::new(&dir).follow_links(false) {
+    for entry in WalkDir::new(&dir)
+        .follow_links(false)
+        .into_iter()
+        // Prune excluded directories outright — walking a protected tree
+        // only to skip every file inside is wasted work.
+        .filter_entry(|e| !helpers::is_excluded(e.path(), &excludes))
+    {
         if cancel_flag.load(Ordering::Relaxed) {
             let _ = tx.send(WorkerMessage::Cancelled);
             return;
         }
         if let Ok(entry) = entry {
             let path = entry.path();
-            if path.is_file() {
+            if entry.file_type().is_file() {
                 if helpers::is_excluded(path, &excludes) {
                     skipped_excluded += 1;
                     continue;
@@ -280,6 +286,12 @@ pub fn duplicates_worker(
         }
     }
 
+    // Deterministic order: most reclaimable first, ties by first path.
+    groups.sort_by(|a, b| {
+        let wa = a.size * (a.files.len() as u64 - 1);
+        let wb = b.size * (b.files.len() as u64 - 1);
+        wb.cmp(&wa).then_with(|| a.files.first().cmp(&b.files.first()))
+    });
     let groups_len = groups.len();
     let total_wasted: u64 =
         groups.iter().map(|g| g.size * (g.files.len() as u64 - 1)).sum();
@@ -372,11 +384,10 @@ pub fn system_scan_worker(
                 return;
             }
             if let Ok(entry) = entry {
-                let path = entry.path();
-                if let Ok(meta) = fs::metadata(path) {
-                    if meta.is_file() {
+                if entry.file_type().is_file() {
+                    if let Ok(meta) = fs::metadata(entry.path()) {
                         matched.push(MatchedFile {
-                            path: path.to_path_buf(),
+                            path: entry.path().to_path_buf(),
                             size: meta.len(),
                         });
                     }
@@ -472,7 +483,7 @@ pub fn folder_sizes_worker(
         }
         if let Ok(entry) = entry {
             let path = entry.path();
-            if !path.is_file() {
+            if !entry.file_type().is_file() {
                 continue;
             }
             if let Ok(meta) = fs::metadata(path) {
@@ -579,7 +590,7 @@ pub fn clean_files(
         } else if use_trash {
             trash::delete(&file.path).map_err(|e| e.to_string())
         } else {
-            fs::remove_file(&file.path).map_err(|e| e.to_string())
+            helpers::remove_file_long(&file.path)
         };
 
         match result {
@@ -703,7 +714,7 @@ pub fn clean_folders(
         let result = if use_trash {
             trash::delete(folder).map_err(|e| e.to_string())
         } else {
-            fs::remove_dir(folder).map_err(|e| e.to_string())
+            helpers::remove_dir_long(folder)
         };
 
         match result {

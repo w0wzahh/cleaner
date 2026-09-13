@@ -14,6 +14,42 @@ Things planned for the next release. Nothing here is final yet.
 
 ---
 
+## [2.9.6] — 2026-09-13
+
+Fourth audit pass — filesystem edge cases researched against upstream
+issues and fixed.
+
+### Fixed
+- Permanent deletes (`remove_file`/`remove_dir`) now retry once via the
+  `\\?\` verbatim path — files deeper than MAX_PATH (260 chars) or with
+  reserved names used to fail outright. `trash::delete` already
+  canonicalizes internally; this covers the non-recycle-bin path.
+- An application manifest is now embedded (`longPathAware` + `supportedOS`
+  declarations), so file APIs use long paths where the OS allows it and
+  Windows stops applying legacy compat shims.
+- Protected paths entered with a `\\?\` verbatim prefix (or the UNC form)
+  now normalize before comparison — they used to silently not match.
+- Glob patterns containing a path separator compared the path
+  case-sensitively while the pattern was lowercased — inconsistent with
+  the case-insensitive behavior everywhere else.
+- The "Images" and "Old Downloads" presets didn't clear size/age filters
+  set by other presets — clicking them after "Big media" found nothing.
+- Duplicate groups were emitted in HashMap order — nondeterministic
+  between runs. Now sorted by reclaimable size, then path.
+- The duplicate scanner walked excluded/protected directories in full
+  before skipping each file — now prunes them during traversal.
+- All directory walkers use `DirEntry::file_type()` (free, from the
+  directory read) instead of a second `stat` per entry, and symlinks are
+  no longer resolved just to decide if an entry is a file.
+- `Settings::save` writes to a temp file then renames — a crash mid-save
+  can no longer leave a truncated settings file.
+- Adding a custom system target validates the folder exists and refuses
+  duplicates (a duplicated path would double-count files in scans).
+- "Reveal settings file" now actually reveals the file in Explorer
+  (`explorer /select`) instead of opening it in the default editor.
+
+---
+
 ## [2.9.5] — 2026-09-12
 
 Third audit pass — deeper edge cases, plus online research into known

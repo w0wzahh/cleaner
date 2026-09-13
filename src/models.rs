@@ -11,6 +11,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.6] - 2026-09-13
+### Fixed
+- Fourth audit pass. Permanent deletes now retry via the \\?\ verbatim
+  path, so files deeper than 260 characters or with odd names can be
+  removed; an application manifest declares longPathAware + supportedOS;
+  protected paths spelled with the \\?\ prefix still match; path-form glob
+  patterns are case-insensitive like the rest; the "Images" and
+  "Old Downloads" presets no longer inherit stale size/age filters;
+  duplicate groups come back in a deterministic order (most reclaimable
+  first); duplicate scans prune excluded folders instead of walking them;
+  every scanner now uses the free dirent file-type instead of re-statting
+  each path; settings save atomically (crash can't truncate the file);
+  custom targets can't be duplicated and nonexistent folders are refused;
+  "Reveal settings file" now really reveals it in Explorer.
+
 ## [2.9.5] - 2026-09-12
 ### Fixed
 - Third audit pass. Scheduled auto-clean after a scan no longer loses its

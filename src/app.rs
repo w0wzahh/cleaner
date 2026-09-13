@@ -413,9 +413,17 @@ fn matched_file_rows(ui: &mut egui::Ui, files: &[MatchedFile], id: &str) {
         });
 }
 
-/// Open a path in the system file manager. Best-effort.
+/// Open a path in the system file manager. Files get a real "reveal" —
+/// `explorer /select` highlights the file inside its folder instead of
+/// opening it in the default editor.
 fn reveal_in_explorer(path: &Path) {
-    let _ = open::that(path);
+    if cfg!(windows) && path.is_file() {
+        let _ = std::process::Command::new("explorer")
+            .arg(format!("/select,{}", path.display()))
+            .spawn();
+    } else {
+        let _ = open::that(path);
+    }
 }
 
 /// Big glowing ring used as the dashboard's main action. `progress == None`
@@ -887,6 +895,27 @@ impl CleanerApp {
         let name = self.new_target_name.trim().to_string();
         let path = self.new_target_path.trim().to_string();
         if name.is_empty() || path.is_empty() {
+            return;
+        }
+        let pb = PathBuf::from(&path);
+        if !pb.is_dir() {
+            self.add_log(&format!(
+                "Custom target not added — folder doesn't exist: {}",
+                path
+            ));
+            self.status = "Folder not found".to_string();
+            self.status_toast = 60;
+            return;
+        }
+        if self
+            .settings
+            .custom_targets
+            .iter()
+            .any(|c| PathBuf::from(&c.path) == pb)
+        {
+            self.add_log("That folder is already a cleaning target.");
+            self.status = "Already added".to_string();
+            self.status_toast = 60;
             return;
         }
         self.settings
@@ -2035,6 +2064,10 @@ impl CleanerApp {
                 if ui.small_button("Images").clicked() {
                     self.custom.extensions =
                         "png,jpg,jpeg,gif,bmp,webp".to_string();
+                    self.custom.pattern.clear();
+                    self.custom.older_than_days = 0;
+                    self.custom.min_size_bytes = 0;
+                    self.custom.max_size_bytes = 0;
                 }
                 if ui.small_button("Old Downloads").clicked() {
                     if let Some(d) = dirs::download_dir() {
@@ -2043,6 +2076,8 @@ impl CleanerApp {
                     self.custom.older_than_days = 30;
                     self.custom.extensions.clear();
                     self.custom.pattern.clear();
+                    self.custom.min_size_bytes = 0;
+                    self.custom.max_size_bytes = 0;
                 }
             });
 

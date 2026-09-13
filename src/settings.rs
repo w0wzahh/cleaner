@@ -51,8 +51,8 @@ pub struct Settings {
     /// with dry run on it only previews).
     #[serde(default)]
     pub schedule_auto_clean: bool,
-    /// Folder scanned when schedule_target is Custom. Empty falls back to
-    /// the Custom Clean tab's current directory.
+    /// Folder scanned when schedule_target is Custom. Empty means the
+    /// scheduled run is skipped — never fall back to the home folder.
     #[serde(default)]
     pub schedule_dir: String,
     /// Unix timestamp of the last scheduled run (0 = never).
@@ -159,7 +159,12 @@ impl Settings {
     pub fn save(&self) {
         let path = data_dir().join("cleaner_settings.json");
         if let Ok(json) = serde_json::to_string_pretty(self) {
-            let _ = std::fs::write(&path, json);
+            // Write-then-rename so a crash mid-save can't leave a
+            // truncated settings file behind.
+            let tmp = path.with_extension("json.tmp");
+            if std::fs::write(&tmp, json).is_ok() {
+                let _ = std::fs::rename(&tmp, &path);
+            }
         }
     }
 
