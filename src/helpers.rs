@@ -43,6 +43,26 @@ pub fn is_hidden(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// `is_hidden` for a walkdir entry — `DirEntry::metadata()` on Windows is
+/// served from the directory listing itself, so this avoids a stat syscall
+/// per file that `is_hidden(path)` would cost inside `filter_entry`.
+pub fn entry_is_hidden(e: &walkdir::DirEntry) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if let Ok(meta) = e.metadata() {
+            const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
+            if meta.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0 {
+                return true;
+            }
+        }
+    }
+    e.file_name()
+        .to_str()
+        .map(|s| s.starts_with('.'))
+        .unwrap_or(false)
+}
+
 /// Iterative file collection — no recursion-depth risk, cancellable, and it
 /// prunes excluded/hidden directories during traversal instead of after.
 pub fn collect_files(
@@ -60,7 +80,7 @@ pub fn collect_files(
     }
     for entry in walker.into_iter().filter_entry(|e| {
         let p = e.path();
-        (include_hidden || !is_hidden(p)) && !is_excluded_prepped(p, &excludes)
+        (include_hidden || !entry_is_hidden(e)) && !is_excluded_prepped(p, &excludes)
     }) {
         if cancel_flag.load(Ordering::Relaxed) {
             return None;
@@ -117,6 +137,13 @@ fn norm_path(p: &str) -> String {
         s.pop();
     }
     s
+}
+
+/// Normalized comparison key for a path — the same normalization
+/// `is_excluded` applies. Handy for deduping paths spelled differently
+/// (`C:\Foo` vs `C:\Foo\` vs `%TEMP%`-style env expansion results).
+pub fn path_key(path: &Path) -> String {
+    norm_path(&path.to_string_lossy())
 }
 
 /// Pre-normalize an exclude list once so a 100k-file scan doesn't redo it
@@ -265,11 +292,11 @@ pub fn remove_dir_long(path: &Path) -> Result<(), String> {
     Err(last.to_string())
 }
 
-pub fn shred_file(path: &Path) -> Result<(), String> {
+pub fn shred_file(path: &Path, cancel: Option<&AtomicBool>) -> Result<(), String> {
     let meta = fs::metadata(path).map_err(|e| e.to_string())?;
     let size = meta.len();
     if size == 0 {
-        return fs::remove_file(path).map_err(|e| e.to_string());
+        return remove_file_long(path);
     }
 
     let seed = SystemTime::now()
@@ -289,9 +316,23 @@ pub fn shred_file(path: &Path) -> Result<(), String> {
     let mut buf = vec![0u8; chunk_size];
 
     for _pass in 0..3 {
+        // Bail out between passes and per chunk so a big file can't hold a
+        // Cancel / window-close hostage through all three passes. The file
+        // is left partially overwritten but NOT deleted — the user asked
+        // to stop, so it stays on disk.
+        if let Some(c) = cancel {
+            if c.load(Ordering::Relaxed) {
+                return Err("cancelled".to_string());
+            }
+        }
         file.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
         let mut remaining = size;
         while remaining > 0 {
+            if let Some(c) = cancel {
+                if c.load(Ordering::Relaxed) {
+                    return Err("cancelled".to_string());
+                }
+            }
             let n = remaining.min(chunk_size as u64) as usize;
             // Fill 8 bytes at a time — a byte-per-RNG-call shred of a big
             // file is needlessly slow.
@@ -309,7 +350,9 @@ pub fn shred_file(path: &Path) -> Result<(), String> {
     }
 
     drop(file);
-    fs::remove_file(path).map_err(|e| e.to_string())
+    // remove_file_long — not plain remove_file — so a >260-char path
+    // doesn't end up shredded-but-undeleted.
+    remove_file_long(path)
 }
 
 // -----------------------------------------------------------------------------

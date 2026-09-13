@@ -14,6 +14,47 @@ Things planned for the next release. Nothing here is final yet.
 
 ---
 
+## [2.9.8] — 2026-09-13
+
+Sixth audit pass — a real hot-path fix for history logging, secure-delete
+edge cases, and CLI hardening.
+
+### Fixed
+- **History log is now written in batches.** `add_log` used to do
+  `fs::metadata` + `OpenOptions` + `writeln` on *every* message — and
+  workers send a line per deleted file, so a 50k-file clean did 50k file
+  opens on the UI thread. Lines are now queued and flushed once per frame
+  (and on exit), preserving order exactly.
+- The visible log buffer no longer does `Vec::remove(0)` per line once it
+  hits capacity (O(n) shift per message) — it bulk-drains instead.
+- **Secure delete can be cancelled mid-file** — previously a large file
+  blocked Cancel/window-close through all three overwrite passes. A
+  cancelled shred leaves the file on disk (partially overwritten, not
+  deleted) and reports Cancelled instead of an error.
+- **Secure delete now deletes via the long-path helper** — a >260-char
+  file used to get shredded and then fail the final `remove_file`,
+  leaving a mangled file behind.
+- **Duplicate system targets are skipped** — `%TEMP%` and
+  `%LOCALAPPDATA%\Temp` are the same folder on standard installs, so
+  every file there was scanned twice (and a custom target could collide
+  with a built-in). Targets are now deduped by normalized path.
+- `main` no longer uses `std::env::args()` — it panics on non-UTF8
+  arguments, which Windows paths can legitimately contain. Now
+  `args_os` + lossy conversion.
+- `--flag --flag` no longer swallows the second flag as the first one's
+  value (`--ext --yes` used to treat "--yes" as the extension list).
+- New `--exclude <paths>` CLI flag gives custom scans the same
+  exclude-directories option the GUI has.
+- The "Big media (50MB+)" preset now clears the age filter — clicking it
+  after "Old files (30d+)" kept filtering to 30-day-old files.
+
+### Performance
+- Hidden-file detection during scans reuses walkdir's entry metadata
+  (free on Windows — the directory listing already carries attributes)
+  instead of a `fs::metadata` syscall per file.
+
+---
+
 ## [2.9.7] — 2026-09-13
 
 Fifth audit pass — transient-delete retries (the pattern Chromium's

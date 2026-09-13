@@ -652,6 +652,9 @@ pub struct CleanerApp {
     pub cancel_flag: Arc<AtomicBool>,
     pub progress: f32,
     pub log: Vec<String>,
+    /// Log lines waiting to be appended to the history file — flushed once
+    /// per frame by `flush_log` instead of one file open per line.
+    pub log_pending: Vec<String>,
     pub rx: Option<mpsc::Receiver<workers::WorkerMessage>>,
     pub status: String,
     pub status_toast: u64,
@@ -704,6 +707,7 @@ impl Default for CleanerApp {
             cancel_flag: Arc::new(AtomicBool::new(false)),
             progress: 0.0,
             log: Vec::new(),
+            log_pending: Vec::new(),
             rx: None,
             status: "Ready".to_string(),
             status_toast: 0,
@@ -851,17 +855,34 @@ impl CleanerApp {
 // -----------------------------------------------------------------------------
 
 impl CleanerApp {
+    /// Append to the visible log + status line and queue a disk write.
+    /// Disk writes are batched in `flush_log` — a 50k-file clean produces a
+    /// log line per file, and opening the history file per line would make
+    /// the UI thread do 50k file opens.
     pub fn add_log(&mut self, msg: &str) {
         let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S");
         let line = format!("[{}] {}", timestamp, msg);
         self.log.push(line.clone());
-        if self.log.len() > 1000 {
-            self.log.remove(0);
+        if self.log.len() > 1200 {
+            // Bulk-drain keeps this amortized O(1) — Vec::remove(0) shifts
+            // the whole buffer on every call once the cap is hit.
+            self.log.drain(..200);
         }
         if self.status_toast == 0 {
             self.status = msg.to_string();
             self.status_toast = 60;
         }
+        self.log_pending.push(line);
+    }
+
+    /// Write queued log lines to the history file in one open. Called at
+    /// the end of `update` and `on_exit` so a frame's worth of lines is a
+    /// single append, and ordering is preserved exactly.
+    pub fn flush_log(&mut self) {
+        if self.log_pending.is_empty() {
+            return;
+        }
+        let lines = std::mem::take(&mut self.log_pending);
         let log_path = self.settings.log_path();
         // Rotate when the log grows past ~1 MB so it can't grow forever.
         if let Ok(meta) = fs::metadata(&log_path) {
@@ -874,7 +895,9 @@ impl CleanerApp {
             .append(true)
             .open(&log_path)
         {
-            let _ = writeln!(file, "{}", line);
+            for line in &lines {
+                let _ = writeln!(file, "{}", line);
+            }
         }
     }
 
@@ -2066,6 +2089,7 @@ impl CleanerApp {
                         "mp4,mkv,avi,mov,mp3,flac,wav".to_string();
                     self.custom.min_size_bytes = 50 * 1024 * 1024;
                     self.custom.max_size_bytes = 0;
+                    self.custom.older_than_days = 0;
                     self.custom.pattern.clear();
                 }
                 if ui.small_button("Images").clicked() {
@@ -3186,6 +3210,7 @@ impl eframe::App for CleanerApp {
         self.update_theme_animation(ctx);
         self.poll_messages(ctx);
         self.maybe_run_scheduled();
+        self.flush_log();
         if self.settings.schedule_enabled {
             // Wake up periodically so due scans fire even when idle.
             ctx.request_repaint_after(std::time::Duration::from_secs(30));
@@ -3465,5 +3490,7 @@ impl eframe::App for CleanerApp {
         self.cancel_flag.store(true, Ordering::Relaxed);
         // Make sure the tray icon disappears instead of lingering.
         self.tray.take();
+        // Persist anything still in the log buffer.
+        self.flush_log();
     }
 }

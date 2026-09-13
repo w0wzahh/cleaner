@@ -42,6 +42,7 @@ FILTERS (custom / large scans):
   --min-size <b>     Minimum file size in bytes
   --max-size <b>     Maximum file size in bytes (0 = no limit)
   --min-mb <n>       Large-file threshold in MB (default: 100)
+  --exclude <paths>  Comma-separated directories to skip (custom scans)
   --recursive        Include subdirectories
   --hidden           Include hidden files
 
@@ -83,7 +84,9 @@ fn run_and_collect(
 fn flag_value(args: &[String], name: &str) -> Option<String> {
     args.iter()
         .position(|a| a == name)
-        .and_then(|i| args.get(i + 1).cloned())
+        // A following "--flag" isn't a value — "--ext --yes" used to
+        // swallow "--yes" as the extension list.
+        .and_then(|i| args.get(i + 1).filter(|v| !v.starts_with("--")).cloned())
 }
 
 fn has_flag(args: &[String], name: &str) -> bool {
@@ -267,6 +270,7 @@ pub fn run(args: &[String]) -> i32 {
             let max = flag_u64(args, "--max-size", 0);
             let recursive = has_flag(args, "--recursive") || settings.recursive;
             let hidden = has_flag(args, "--hidden") || settings.include_hidden;
+            let excludes = flag_value(args, "--exclude").unwrap_or_default();
             let protected = settings.protected_list();
             let msgs = run_and_collect(move |tx, cancel| {
                 workers::custom_scan_worker(
@@ -276,7 +280,7 @@ pub fn run(args: &[String]) -> i32 {
                     min,
                     max,
                     pattern,
-                    String::new(),
+                    excludes,
                     protected,
                     recursive,
                     hidden,

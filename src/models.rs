@@ -11,6 +11,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.8] - 2026-09-13
+### Fixed
+- Sixth audit pass. History-log writes are now batched — add_log used to
+  open and append the file per message, so a 50k-file clean did 50k file
+  opens on the UI thread (plus O(n) shifts on the visible buffer);
+- secure delete can now be cancelled mid-file and no longer leaves a
+  shredded-but-undeleted file when the path exceeds 260 chars;
+- system scan skips duplicate targets (%TEMP% and %LOCALAPPDATA%\Temp are
+  the same folder on standard installs, and custom targets can collide
+  with built-ins); the CLI no longer panics on non-UTF8 arguments
+  (args_os + lossy), a "--flag --flag" sequence can't be swallowed as a
+  value, and a new --exclude flag gives custom scans the same
+  exclude-dirs the GUI has; the "Big media" preset no longer leaks a
+  stale age filter; hidden-file detection reuses walkdir's entry metadata
+  instead of statting every file again.
+
 ## [2.9.7] - 2026-09-13
 ### Fixed
 - Fifth audit pass. Deletes now retry briefly on transient lock errors

@@ -30,7 +30,12 @@ fn attach_parent_console() {}
 
 fn main() -> Result<(), eframe::Error> {
     // Any command-line argument means headless mode; no args = GUI.
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    // args_os + lossy conversion — std::env::args() panics on non-UTF8
+    // arguments, which Windows paths can legitimately contain.
+    let args: Vec<String> = std::env::args_os()
+        .skip(1)
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
     if !args.is_empty() {
         attach_parent_console();
         std::process::exit(cleaner::cli::run(&args));

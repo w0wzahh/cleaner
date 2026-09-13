@@ -366,12 +366,22 @@ pub fn system_scan_worker(
 ) {
     let mut matched = Vec::new();
     let protected = helpers::prep_excludes(&protected);
+    // %TEMP% and %LOCALAPPDATA%\Temp are usually the same folder, and a
+    // custom target can collide with a built-in — scan each dir once.
+    let mut seen_targets = std::collections::HashSet::new();
     for target in targets {
         if cancel_flag.load(Ordering::Relaxed) {
             let _ = tx.send(WorkerMessage::Cancelled);
             return;
         }
         if !target.enabled || helpers::is_excluded_prepped(&target.path, &protected) {
+            continue;
+        }
+        if !seen_targets.insert(helpers::path_key(&target.path)) {
+            let _ = tx.send(WorkerMessage::Log(format!(
+                "Skipping {} — same folder as an earlier target",
+                target.name
+            )));
             continue;
         }
         let _ = tx.send(WorkerMessage::Log(format!("Scanning {} ...", target.name)));
@@ -590,12 +600,19 @@ pub fn clean_files(
         }
 
         let result: Result<(), String> = if secure_delete {
-            helpers::shred_file(&file.path)
+            helpers::shred_file(&file.path, Some(&cancel_flag))
         } else if use_trash {
             trash::delete(&file.path).map_err(|e| e.to_string())
         } else {
             helpers::remove_file_long(&file.path)
         };
+
+        // A shred interrupted by Cancel / window-close isn't an error —
+        // report the operation as cancelled.
+        if result.is_err() && cancel_flag.load(Ordering::Relaxed) {
+            let _ = tx.send(WorkerMessage::Cancelled);
+            return;
+        }
 
         match result {
             Ok(_) => {
