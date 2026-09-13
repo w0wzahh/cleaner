@@ -9,15 +9,23 @@ use crate::themes::Theme;
 pub struct Settings {
     #[serde(default)]
     pub theme: Theme,
+    #[serde(default = "default_true")]
     pub use_trash: bool,
+    #[serde(default = "default_true")]
     pub dry_run: bool,
+    #[serde(default)]
     pub recursive: bool,
+    #[serde(default)]
     pub include_hidden: bool,
+    #[serde(default = "default_true")]
     pub confirm_clean: bool,
     #[serde(default)]
     pub secure_delete: bool,
+    #[serde(default = "home_default_dir")]
     pub default_dir: String,
+    #[serde(default = "default_github_url")]
     pub github_url: String,
+    #[serde(default = "default_log_file")]
     pub log_file: String,
     /// User-defined System Cleaner targets.
     #[serde(default)]
@@ -69,6 +77,18 @@ pub struct Settings {
 
 fn default_schedule_hours() -> u32 {
     24
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_github_url() -> String {
+    "https://github.com/w0wzahh/cleaner".to_string()
+}
+
+fn default_log_file() -> String {
+    "cleaner_history.log".to_string()
 }
 
 /// What a scheduled scan operates on.

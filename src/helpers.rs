@@ -53,13 +53,14 @@ pub fn collect_files(
     cancel_flag: &AtomicBool,
 ) -> Option<Vec<PathBuf>> {
     let mut files = Vec::new();
+    let excludes = prep_excludes(exclude);
     let mut walker = WalkDir::new(dir).follow_links(false);
     if !recursive {
         walker = walker.max_depth(1);
     }
     for entry in walker.into_iter().filter_entry(|e| {
         let p = e.path();
-        (include_hidden || !is_hidden(p)) && !is_excluded(p, exclude)
+        (include_hidden || !is_hidden(p)) && !is_excluded_prepped(p, &excludes)
     }) {
         if cancel_flag.load(Ordering::Relaxed) {
             return None;
@@ -118,25 +119,36 @@ fn norm_path(p: &str) -> String {
     s
 }
 
-pub fn is_excluded(path: &Path, exclude_dirs: &[String]) -> bool {
+/// Pre-normalize an exclude list once so a 100k-file scan doesn't redo it
+/// for every path — pair with `is_excluded_prepped` inside the hot loop.
+pub fn prep_excludes(exclude_dirs: &[String]) -> Vec<String> {
+    exclude_dirs
+        .iter()
+        .map(|e| norm_path(&e.trim()))
+        .filter(|e| !e.is_empty())
+        .collect()
+}
+
+/// `is_excluded` against a `prep_excludes` list — the path is still
+/// normalized per call (it's different each time), the excludes are not.
+pub fn is_excluded_prepped(path: &Path, prepped: &[String]) -> bool {
     let norm = norm_path(&path.to_string_lossy());
-    for ex in exclude_dirs {
-        let ex = ex.trim();
-        if ex.is_empty() {
-            continue;
-        }
-        let ex = norm_path(ex);
+    for ex in prepped {
         // Exact match, or a proper child boundary — never a sibling like
         // "C:\KeepOther" matching "C:\Keep".
-        if norm == ex
+        if norm == *ex
             || (norm.len() > ex.len()
-                && norm.starts_with(&ex)
+                && norm.starts_with(ex.as_str())
                 && norm.as_bytes()[ex.len()] == b'\\')
         {
             return true;
         }
     }
     false
+}
+
+pub fn is_excluded(path: &Path, exclude_dirs: &[String]) -> bool {
+    is_excluded_prepped(path, &prep_excludes(exclude_dirs))
 }
 
 // -----------------------------------------------------------------------------
@@ -182,24 +194,75 @@ impl SimpleRng {
     }
 }
 
-/// Delete a file, retrying once via the `\\?\` verbatim path on failure —
+/// Errors that often clear within milliseconds — an AV scanner, indexer,
+/// or another process briefly holding the file. Chromium's installer and
+/// SQLite both retry these instead of failing outright.
+#[cfg(windows)]
+fn is_transient_delete_error(e: &std::io::Error) -> bool {
+    // ERROR_ACCESS_DENIED, ERROR_SHARING_VIOLATION, ERROR_DIR_NOT_EMPTY.
+    matches!(e.raw_os_error(), Some(5) | Some(32) | Some(145))
+}
+#[cfg(not(windows))]
+fn is_transient_delete_error(_e: &std::io::Error) -> bool {
+    false
+}
+
+/// One delete attempt: plain path first, then the `\\?\` verbatim form —
 /// plain remove_file rejects paths longer than MAX_PATH (260 chars) and
 /// odd reserved names, and fs::canonicalize hands back a verbatim path
 /// that bypasses both limits. trash::delete already canonicalizes
 /// internally, so this is only needed for the permanent-delete path.
-pub fn remove_file_long(path: &Path) -> Result<(), String> {
+fn remove_file_once(path: &Path) -> std::io::Result<()> {
     fs::remove_file(path).or_else(|e| {
-        let canon = fs::canonicalize(path).map_err(|_| e.to_string())?;
-        fs::remove_file(&canon).map_err(|e2| e2.to_string())
+        let canon = fs::canonicalize(path).map_err(|_| e)?;
+        fs::remove_file(&canon)
     })
 }
 
-/// Same retry for removing an empty directory.
-pub fn remove_dir_long(path: &Path) -> Result<(), String> {
+fn remove_dir_once(path: &Path) -> std::io::Result<()> {
     fs::remove_dir(path).or_else(|e| {
-        let canon = fs::canonicalize(path).map_err(|_| e.to_string())?;
-        fs::remove_dir(&canon).map_err(|e2| e2.to_string())
+        let canon = fs::canonicalize(path).map_err(|_| e)?;
+        fs::remove_dir(&canon)
     })
+}
+
+/// Delete a file: verbatim fallback for long paths, plus a short retry
+/// loop for transient lock errors (AV/indexer races).
+pub fn remove_file_long(path: &Path) -> Result<(), String> {
+    let mut last = match remove_file_once(path) {
+        Ok(()) => return Ok(()),
+        Err(e) => e,
+    };
+    for delay_ms in [50u64, 150, 300] {
+        if !is_transient_delete_error(&last) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+        match remove_file_once(path) {
+            Ok(()) => return Ok(()),
+            Err(e) => last = e,
+        }
+    }
+    Err(last.to_string())
+}
+
+/// Same long-path + transient-retry handling for removing an empty dir.
+pub fn remove_dir_long(path: &Path) -> Result<(), String> {
+    let mut last = match remove_dir_once(path) {
+        Ok(()) => return Ok(()),
+        Err(e) => e,
+    };
+    for delay_ms in [50u64, 150, 300] {
+        if !is_transient_delete_error(&last) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+        match remove_dir_once(path) {
+            Ok(()) => return Ok(()),
+            Err(e) => last = e,
+        }
+    }
+    Err(last.to_string())
 }
 
 pub fn shred_file(path: &Path) -> Result<(), String> {
@@ -342,11 +405,12 @@ pub fn scan_large_files(
 ) -> Option<Vec<LargeFile>> {
     let threshold = threshold_mb.saturating_mul(1024 * 1024);
     let mut large_files = Vec::new();
+    let excludes = prep_excludes(exclude);
 
     for entry in WalkDir::new(dir_path)
         .follow_links(false)
         .into_iter()
-        .filter_entry(|e| !is_excluded(e.path(), exclude))
+        .filter_entry(|e| !is_excluded_prepped(e.path(), &excludes))
     {
         if cancel_flag.load(Ordering::Relaxed) {
             return None;
@@ -379,11 +443,12 @@ pub fn scan_empty_folders(
     cancel_flag: &AtomicBool,
 ) -> Option<Vec<PathBuf>> {
     let mut all_dirs: Vec<PathBuf> = Vec::new();
+    let excludes = prep_excludes(exclude);
 
     for entry in WalkDir::new(dir_path)
         .follow_links(false)
         .into_iter()
-        .filter_entry(|e| !is_excluded(e.path(), exclude))
+        .filter_entry(|e| !is_excluded_prepped(e.path(), &excludes))
         .filter_map(|e| e.ok())
     {
         if cancel_flag.load(Ordering::Relaxed) {
@@ -407,7 +472,7 @@ pub fn scan_empty_folders(
             let mut has_content = false;
             for entry in rd.flatten() {
                 let p = entry.path();
-                if p.is_dir() {
+                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                     if !empty_set.contains(&p) {
                         has_content = true;
                         break;

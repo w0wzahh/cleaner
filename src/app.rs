@@ -387,17 +387,23 @@ fn empty_state(ui: &mut egui::Ui, text: &str) {
     ui.add_space(8.0);
 }
 
-/// Scrollable list of matched files with right-aligned sizes.
+/// Scrollable list of matched files with right-aligned sizes. Virtualized
+/// via show_rows — a system scan can match tens of thousands of files and
+/// laying out every row every frame would make the UI crawl.
 fn matched_file_rows(ui: &mut egui::Ui, files: &[MatchedFile], id: &str) {
+    if files.is_empty() {
+        egui::ScrollArea::vertical()
+            .id_source(id)
+            .auto_shrink([false, false])
+            .show(ui, |ui| empty_state(ui, "Nothing here yet — run a scan."));
+        return;
+    }
+    let row_h = ui.text_style_height(&egui::TextStyle::Monospace) + 8.0;
     egui::ScrollArea::vertical()
         .id_source(id)
         .auto_shrink([false, false])
-        .show(ui, |ui| {
-            if files.is_empty() {
-                empty_state(ui, "Nothing here yet — run a scan.");
-                return;
-            }
-            for f in files {
+        .show_rows(ui, row_h, files.len(), |ui, range| {
+            for f in &files[range] {
                 ui.horizontal(|ui| {
                     ui.monospace(f.path.display().to_string());
                     ui.with_layout(
@@ -419,7 +425,7 @@ fn matched_file_rows(ui: &mut egui::Ui, files: &[MatchedFile], id: &str) {
 fn reveal_in_explorer(path: &Path) {
     if cfg!(windows) && path.is_file() {
         let _ = std::process::Command::new("explorer")
-            .arg(format!("/select,{}", path.display()))
+            .arg(format!("/select,\"{}\"", path.display()))
             .spawn();
     } else {
         let _ = open::that(path);
@@ -552,15 +558,16 @@ fn tool_tile(
     resp
 }
 
-/// Human label for a schedule interval in hours.
-fn schedule_interval_label(hours: u32) -> &'static str {
+/// Human label for a schedule interval in hours. Values outside the preset
+/// list (e.g. a hand-edited settings file) still get an honest label.
+fn schedule_interval_label(hours: u32) -> String {
     match hours {
-        1 => "1 hour",
-        6 => "6 hours",
-        12 => "12 hours",
-        24 => "24 hours (daily)",
-        168 => "7 days (weekly)",
-        _ => "24 hours (daily)",
+        1 => "1 hour".to_string(),
+        6 => "6 hours".to_string(),
+        12 => "12 hours".to_string(),
+        24 => "24 hours (daily)".to_string(),
+        168 => "7 days (weekly)".to_string(),
+        h => format!("every {} hours", h),
     }
 }
 
@@ -2231,29 +2238,35 @@ impl CleanerApp {
             let sort = self.custom.sort;
             let files = &self.custom.matched_files;
             let selected = &mut self.custom.selected;
+            if files.is_empty() {
+                egui::ScrollArea::vertical()
+                    .id_source("custom_scroll")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| empty_state(ui, "Nothing here yet — run a scan."));
+                return;
+            }
+            // Sort+filter once, then virtualize — huge scans otherwise lay
+            // out every row on every frame.
+            let mut view: Vec<(&MatchedFile, String)> = files
+                .iter()
+                .filter(|f| {
+                    filter.is_empty()
+                        || f.path
+                            .to_string_lossy()
+                            .to_lowercase()
+                            .contains(&filter)
+                })
+                .map(|f| (f, name_key(&f.path)))
+                .collect();
+            view.sort_by(|a, b| {
+                sort.compare((a.0.size, a.1.as_str()), (b.0.size, b.1.as_str()))
+            });
+            let row_h = ui.text_style_height(&egui::TextStyle::Monospace) + 8.0;
             egui::ScrollArea::vertical()
                 .id_source("custom_scroll")
                 .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    if files.is_empty() {
-                        empty_state(ui, "Nothing here yet — run a scan.");
-                        return;
-                    }
-                    let mut view: Vec<(&MatchedFile, String)> = files
-                        .iter()
-                        .filter(|f| {
-                            filter.is_empty()
-                                || f.path
-                                    .to_string_lossy()
-                                    .to_lowercase()
-                                    .contains(&filter)
-                        })
-                        .map(|f| (f, name_key(&f.path)))
-                        .collect();
-                    view.sort_by(|a, b| {
-                        sort.compare((a.0.size, a.1.as_str()), (b.0.size, b.1.as_str()))
-                    });
-                    for (f, _) in view {
+                .show_rows(ui, row_h, view.len(), |ui, range| {
+                    for (f, _) in &view[range] {
                         ui.horizontal(|ui| {
                             let mut on = selected.contains(&f.path);
                             if ui.checkbox(&mut on, "").changed() {
@@ -2601,29 +2614,35 @@ impl CleanerApp {
             let sort = self.large_files.sort;
             let files = &self.large_files.files;
             let selected = &mut self.large_files.selected;
+            if files.is_empty() {
+                egui::ScrollArea::vertical()
+                    .id_source("large_files_scroll")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        empty_state(ui, "No large files found yet — run a scan.")
+                    });
+                return;
+            }
+            let mut view: Vec<(&LargeFile, String)> = files
+                .iter()
+                .filter(|f| {
+                    filter.is_empty()
+                        || f.path
+                            .to_string_lossy()
+                            .to_lowercase()
+                            .contains(&filter)
+                })
+                .map(|f| (f, name_key(&f.path)))
+                .collect();
+            view.sort_by(|a, b| {
+                sort.compare((a.0.size, a.1.as_str()), (b.0.size, b.1.as_str()))
+            });
+            let row_h = ui.text_style_height(&egui::TextStyle::Monospace) + 8.0;
             egui::ScrollArea::vertical()
                 .id_source("large_files_scroll")
                 .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    if files.is_empty() {
-                        empty_state(ui, "No large files found yet — run a scan.");
-                        return;
-                    }
-                    let mut view: Vec<(&LargeFile, String)> = files
-                        .iter()
-                        .filter(|f| {
-                            filter.is_empty()
-                                || f.path
-                                    .to_string_lossy()
-                                    .to_lowercase()
-                                    .contains(&filter)
-                        })
-                        .map(|f| (f, name_key(&f.path)))
-                        .collect();
-                    view.sort_by(|a, b| {
-                        sort.compare((a.0.size, a.1.as_str()), (b.0.size, b.1.as_str()))
-                    });
-                    for (f, _) in view {
+                .show_rows(ui, row_h, view.len(), |ui, range| {
+                    for (f, _) in &view[range] {
                         ui.horizontal(|ui| {
                             let mut on = selected.contains(&f.path);
                             if ui.checkbox(&mut on, "").changed() {
@@ -2642,9 +2661,9 @@ impl CleanerApp {
                                             .weak(),
                                     );
                                     if ui.small_button("Locate").clicked() {
-                                        if let Some(parent) = f.path.parent() {
-                                            reveal_in_explorer(parent);
-                                        }
+                                        // Select the file itself, not just
+                                        // open its parent folder.
+                                        reveal_in_explorer(&f.path);
                                     }
                                 },
                             );

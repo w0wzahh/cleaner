@@ -185,13 +185,14 @@ pub fn duplicates_worker(
     let mut size_map: HashMap<u64, Vec<PathBuf>> = HashMap::new();
     let mut total_files = 0;
     let mut skipped_excluded = 0u64;
+    let excludes = helpers::prep_excludes(&excludes);
 
     for entry in WalkDir::new(&dir)
         .follow_links(false)
         .into_iter()
         // Prune excluded directories outright — walking a protected tree
         // only to skip every file inside is wasted work.
-        .filter_entry(|e| !helpers::is_excluded(e.path(), &excludes))
+        .filter_entry(|e| !helpers::is_excluded_prepped(e.path(), &excludes))
     {
         if cancel_flag.load(Ordering::Relaxed) {
             let _ = tx.send(WorkerMessage::Cancelled);
@@ -200,7 +201,7 @@ pub fn duplicates_worker(
         if let Ok(entry) = entry {
             let path = entry.path();
             if entry.file_type().is_file() {
-                if helpers::is_excluded(path, &excludes) {
+                if helpers::is_excluded_prepped(path, &excludes) {
                     skipped_excluded += 1;
                     continue;
                 }
@@ -364,12 +365,13 @@ pub fn system_scan_worker(
     tx: mpsc::Sender<WorkerMessage>,
 ) {
     let mut matched = Vec::new();
+    let protected = helpers::prep_excludes(&protected);
     for target in targets {
         if cancel_flag.load(Ordering::Relaxed) {
             let _ = tx.send(WorkerMessage::Cancelled);
             return;
         }
-        if !target.enabled || helpers::is_excluded(&target.path, &protected) {
+        if !target.enabled || helpers::is_excluded_prepped(&target.path, &protected) {
             continue;
         }
         let _ = tx.send(WorkerMessage::Log(format!("Scanning {} ...", target.name)));
@@ -377,7 +379,7 @@ pub fn system_scan_worker(
         for entry in WalkDir::new(&target.path)
             .follow_links(false)
             .into_iter()
-            .filter_entry(|e| !helpers::is_excluded(e.path(), &protected))
+            .filter_entry(|e| !helpers::is_excluded_prepped(e.path(), &protected))
         {
             if cancel_flag.load(Ordering::Relaxed) {
                 let _ = tx.send(WorkerMessage::Cancelled);
@@ -471,11 +473,12 @@ pub fn folder_sizes_worker(
     let mut map: HashMap<String, u64> = HashMap::new();
     let mut total = 0u64;
     let mut seen = 0usize;
+    let protected = helpers::prep_excludes(&protected);
 
     for entry in WalkDir::new(&dir)
         .follow_links(false)
         .into_iter()
-        .filter_entry(|e| !helpers::is_excluded(e.path(), &protected))
+        .filter_entry(|e| !helpers::is_excluded_prepped(e.path(), &protected))
     {
         if cancel_flag.load(Ordering::Relaxed) {
             let _ = tx.send(WorkerMessage::Cancelled);
@@ -554,6 +557,7 @@ pub fn clean_files(
     let mut errors = 0;
     let mut skipped = 0;
     let mut freed = 0u64;
+    let protected = helpers::prep_excludes(&protected);
     let mut deleted_paths = Vec::new();
 
     for (i, file) in files.iter().enumerate() {
@@ -565,7 +569,7 @@ pub fn clean_files(
             let _ = tx.send(WorkerMessage::Progress((i + 1) as f32 / total.max(1) as f32));
         }
 
-        if helpers::is_excluded(&file.path, &protected) {
+        if helpers::is_excluded_prepped(&file.path, &protected) {
             skipped += 1;
             let _ = tx.send(WorkerMessage::Log(format!(
                 "Skipped (protected): {}",
@@ -665,6 +669,7 @@ pub fn clean_folders(
     let mut errors = 0;
     let mut skipped = 0;
     let mut deleted_paths = Vec::new();
+    let protected = helpers::prep_excludes(&protected);
 
     let mut sorted = folders;
     sorted.sort_by_key(|p| std::cmp::Reverse(p.components().count()));
@@ -678,7 +683,7 @@ pub fn clean_folders(
             let _ = tx.send(WorkerMessage::Progress((i + 1) as f32 / total.max(1) as f32));
         }
 
-        if helpers::is_excluded(folder, &protected) {
+        if helpers::is_excluded_prepped(folder, &protected) {
             skipped += 1;
             let _ = tx.send(WorkerMessage::Log(format!(
                 "Skipped (protected): {}",

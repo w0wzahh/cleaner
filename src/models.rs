@@ -11,6 +11,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.7] - 2026-09-13
+### Fixed
+- Fifth audit pass. Deletes now retry briefly on transient lock errors
+  (ACCESS_DENIED / SHARING_VIOLATION / DIR_NOT_EMPTY — the AV-scanner and
+  indexer races Chromium and SQLite both retry on); exclusion lists are
+  normalized once per scan instead of once per file; every Settings field
+  now carries a serde default so an old settings file can no longer be
+  discarded as corrupt for missing a newer key; "Reveal" quoting handles
+  paths with commas/spaces; the schedule-interval label reports custom
+  values honestly; the file lists are virtualized so 50k-file scans stay
+  smooth; and "Locate" in Large Files selects the file itself instead of
+  just opening its parent folder.
+
 ## [2.9.6] - 2026-09-13
 ### Fixed
 - Fourth audit pass. Permanent deletes now retry via the \\?\ verbatim

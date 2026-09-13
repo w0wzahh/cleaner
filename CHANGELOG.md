@@ -14,6 +14,41 @@ Things planned for the next release. Nothing here is final yet.
 
 ---
 
+## [2.9.7] — 2026-09-13
+
+Fifth audit pass — transient-delete retries (the pattern Chromium's
+installer and SQLite use for AV/indexer races), settings robustness, and
+UI performance on very large scans.
+
+### Fixed
+- File and folder deletes now retry on transient errors —
+  `ERROR_ACCESS_DENIED`, `ERROR_SHARING_VIOLATION`, and
+  `ERROR_DIR_NOT_EMPTY` often clear within milliseconds when an antivirus
+  scanner or indexer briefly holds a file. Retries at 50/150/300 ms, same
+  approach Chromium's installer and SQLite take. Previously these showed
+  up as failed deletions the user had to retry manually.
+- All `Settings` fields now have serde defaults — a settings file written
+  by an older version can no longer be discarded as corrupt just because
+  it's missing a newer key; missing fields fall back to defaults.
+- `explorer /select` now quotes the path, so files whose names contain
+  commas or spaces reveal correctly.
+- "Locate" in Large Files selects the file itself in Explorer instead of
+  just opening its parent folder.
+- The schedule-interval label reports hand-edited values honestly instead
+  of claiming "24 hours (daily)" for anything outside the presets.
+- `scan_empty_folders` uses the directory entry's file type instead of a
+  second `stat` per child.
+
+### Performance
+- Exclusion lists are normalized once per scan instead of once per file —
+  on a 100k-file scan with protected paths this eliminates 100k×N string
+  allocations.
+- The Custom Clean, Large Files, and System Cleaner result lists are now
+  virtualized (`show_rows`) — only visible rows are laid out, so a scan
+  that matches tens of thousands of files no longer makes the UI crawl.
+
+---
+
 ## [2.9.6] — 2026-09-13
 
 Fourth audit pass — filesystem edge cases researched against upstream
