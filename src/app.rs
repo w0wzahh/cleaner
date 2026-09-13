@@ -126,6 +126,41 @@ fn primary_button(ui: &mut egui::Ui, enabled: bool, text: impl Into<String>) -> 
     )
 }
 
+/// Full-width primary action — the scan button at the bottom of setup cards.
+fn primary_button_fill(
+    ui: &mut egui::Ui,
+    enabled: bool,
+    text: impl Into<String>,
+) -> egui::Response {
+    let w = ui.available_width();
+    ui.add_enabled(
+        enabled,
+        egui::Button::new(
+            egui::RichText::new(text.into())
+                .strong()
+                .color(egui::Color32::WHITE),
+        )
+        .fill(accent(ui))
+        .min_size(egui::vec2(w, 30.0)),
+    )
+}
+
+/// Compact stat chip used in result-card headers ("247 files", "1.2 GB").
+fn stat_chip(ui: &mut egui::Ui, value: impl Into<String>, note: &str) {
+    egui::Frame::none()
+        .fill(ui.visuals().extreme_bg_color)
+        .inner_margin(egui::Margin::symmetric(10.0, 5.0))
+        .rounding(egui::Rounding::same(6.0))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new(value.into()).strong().small());
+                if !note.is_empty() {
+                    ui.label(egui::RichText::new(note).weak().small());
+                }
+            });
+        });
+}
+
 fn danger_button(ui: &mut egui::Ui, enabled: bool, text: impl Into<String>) -> egui::Response {
     ui.add_enabled(
         enabled,
@@ -2225,1105 +2260,1514 @@ impl CleanerApp {
         });
     }
 
-    fn draw_custom_clean(&mut self, ui: &mut egui::Ui) {
-        let busy = self.busy();
+    /// Height the results list should occupy so the footer action row stays
+    /// pinned to the bottom of the results card.
+    fn list_area_h(ui: &egui::Ui) -> f32 {
+        let avail = ui.available_height();
+        if avail.is_finite() {
+            (avail - 46.0).max(80.0)
+        } else {
+            420.0
+        }
+    }
 
-        card(ui, "Scan setup", |ui| {
-            dir_picker(ui, &mut self.custom.dir_path);
-            ui.add_space(6.0);
-            egui::Grid::new("custom_filters")
-                .num_columns(2)
-                .spacing([16.0, 6.0])
-                .show(ui, |ui| {
-                    ui.label("Extensions");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.custom.extensions)
-                            .hint_text("tmp, log"),
-                    );
-                    ui.end_row();
-
-                    ui.label("Glob pattern");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.custom.pattern)
-                            .hint_text("*.tmp"),
-                    );
-                    ui.end_row();
-
-                    ui.label("Older than (days)");
-                    ui.add(
-                        egui::Slider::new(&mut self.custom.older_than_days, 0..=36500)
-                            .text("days"),
-                    );
-                    ui.end_row();
-
-                    ui.label("Min size (bytes)");
-                    ui.add(
-                        egui::DragValue::new(&mut self.custom.min_size_bytes).speed(1000),
-                    );
-                    ui.end_row();
-
-                    ui.label("Max size (bytes, 0 = no limit)");
-                    ui.add(
-                        egui::DragValue::new(&mut self.custom.max_size_bytes).speed(1000),
-                    );
-                    ui.end_row();
-
-                    ui.label("Exclude directories");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.custom.exclude_dirs)
-                            .hint_text("comma separated, absolute paths"),
-                    );
-                    ui.end_row();
-                });
-
-            ui.add_space(4.0);
-            ui.horizontal_wrapped(|ui| {
-                ui.label(egui::RichText::new("Presets:").weak().small());
-                if ui.small_button("Temp & logs").clicked() {
-                    self.custom.extensions = "tmp,log,bak,dmp".to_string();
-                    self.custom.pattern.clear();
-                    self.custom.older_than_days = 0;
-                    self.custom.min_size_bytes = 0;
-                    self.custom.max_size_bytes = 0;
-                }
-                if ui.small_button("Old files (30d+)").clicked() {
-                    self.custom.older_than_days = 30;
-                    self.custom.extensions.clear();
-                    self.custom.pattern.clear();
-                    self.custom.min_size_bytes = 0;
-                    self.custom.max_size_bytes = 0;
-                }
-                if ui.small_button("Big media (50MB+)").clicked() {
-                    self.custom.extensions =
-                        "mp4,mkv,avi,mov,mp3,flac,wav".to_string();
-                    self.custom.min_size_bytes = 50 * 1024 * 1024;
-                    self.custom.max_size_bytes = 0;
-                    self.custom.older_than_days = 0;
-                    self.custom.pattern.clear();
-                }
-                if ui.small_button("Images").clicked() {
-                    self.custom.extensions =
-                        "png,jpg,jpeg,gif,bmp,webp".to_string();
-                    self.custom.pattern.clear();
-                    self.custom.older_than_days = 0;
-                    self.custom.min_size_bytes = 0;
-                    self.custom.max_size_bytes = 0;
-                }
-                if ui.small_button("Old Downloads").clicked() {
-                    if let Some(d) = dirs::download_dir() {
-                        self.custom.dir_path = d.display().to_string();
-                    }
-                    self.custom.older_than_days = 30;
-                    self.custom.extensions.clear();
-                    self.custom.pattern.clear();
-                    self.custom.min_size_bytes = 0;
-                    self.custom.max_size_bytes = 0;
-                }
-            });
-
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                if primary_button(ui, !busy, "Scan")
-                    .on_hover_text("Scan the folder using the filters above")
-                    .clicked()
-                {
-                    self.start_custom_scan();
-                }
-                if ui
-                    .add_enabled(
-                        !busy && !self.custom.matched_files.is_empty(),
-                        egui::Button::new("Select all"),
-                    )
-                    .on_hover_text(
-                        "Select all results — respects the active filter",
-                    )
-                    .clicked()
-                {
-                    let flt = self.custom.filter.to_lowercase();
-                    self.custom.selected = self
-                        .custom
-                        .matched_files
-                        .iter()
-                        .filter(|f| {
-                            flt.is_empty()
-                                || f.path
-                                    .to_string_lossy()
-                                    .to_lowercase()
-                                    .contains(&flt)
-                        })
-                        .map(|f| f.path.clone())
-                        .collect();
-                }
-                if ui
-                    .add_enabled(
-                        !busy && !self.custom.selected.is_empty(),
-                        egui::Button::new("Clear"),
-                    )
-                    .clicked()
-                {
-                    self.custom.selected.clear();
-                }
-                let n = self.custom.selected.len();
-                let sel_size: u64 = self
-                    .custom
-                    .matched_files
-                    .iter()
-                    .filter(|f| self.custom.selected.contains(&f.path))
-                    .map(|f| f.size)
-                    .sum();
-                if danger_button(ui, !busy && n > 0, format!("Clean {} files", n))
-                    .on_hover_text(
-                        "Delete the selected files — honors dry run and recycle bin settings",
-                    )
-                    .clicked()
-                {
-                    if self.settings.confirm_clean {
-                        self.confirm_title = "Clean selected files?".to_string();
-                        self.confirm_body = format!(
-                            "Delete the {} selected files ({})?",
-                            n,
-                            helpers::human_size(sel_size)
-                        );
-                        self.confirm_action = Some(ConfirmAction::CleanFiles(self.tab));
-                    } else {
-                        self.start_clean_selected(self.tab);
-                    }
-                }
-                if ui
-                    .add_enabled(
-                        !self.custom.matched_files.is_empty(),
-                        egui::Button::new("Export report"),
-                    )
-                    .clicked()
-                {
-                    match helpers::export_report(&self.custom.matched_files, "custom") {
-                        Ok(p) => {
-                            self.status = format!("Report saved: {}", p.display());
-                            self.status_toast = 60;
-                        }
-                        Err(e) => {
-                            self.status = format!("Export error: {}", e);
-                            self.status_toast = 60;
-                        }
-                    }
-                }
-            });
-        });
-
-        ui.add_space(10.0);
-
-        card(ui, "Results", |ui| {
-            ui.label(format!(
-                "Matched {} files · {} · {} selected",
-                self.custom.matched_files.len(),
-                helpers::human_size(self.custom.total_matched_size),
-                self.custom.selected.len()
-            ));
-
-            // File-type breakdown: which extensions account for the size.
-            if !self.custom.matched_files.is_empty() {
-                let mut by_ext: BTreeMap<String, (u64, u64)> = BTreeMap::new();
-                for f in &self.custom.matched_files {
-                    let ext = f
-                        .path
-                        .extension()
-                        .and_then(|e| e.to_str())
-                        .map(|s| s.to_lowercase())
-                        .unwrap_or_else(|| "(no ext)".to_string());
-                    let ent = by_ext.entry(ext).or_default();
-                    ent.0 += 1;
-                    ent.1 += f.size;
-                }
-                let mut ranked: Vec<(String, (u64, u64))> =
-                    by_ext.into_iter().collect();
-                ranked.sort_by(|a, b| b.1 .1.cmp(&a.1 .1));
-                ranked.truncate(10);
-                ui.add_space(4.0);
-                ui.horizontal_wrapped(|ui| {
-                    for (ext, (count, size)) in &ranked {
-                        ui.label(
-                            egui::RichText::new(format!(
-                                ".{} {} · {}",
-                                ext,
-                                count,
-                                helpers::human_size(*size)
-                            ))
-                            .small()
-                            .weak(),
-                        );
-                    }
-                });
-            }
-            ui.add_space(4.0);
-
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Filter:").weak().small());
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.custom.filter)
-                        .hint_text("type to filter results")
-                        .desired_width(220.0),
-                );
-                if !self.custom.filter.is_empty() && ui.small_button("Clear").clicked() {
-                    self.custom.filter.clear();
-                }
-                ui.separator();
-                ui.label(egui::RichText::new("Sort:").weak().small());
-                egui::ComboBox::from_id_source("custom_sort")
-                    .selected_text(self.custom.sort.label())
-                    .show_ui(ui, |ui| {
-                        for s in SortMode::all() {
-                            ui.selectable_value(&mut self.custom.sort, *s, s.label());
-                        }
-                    });
-            });
-            ui.add_space(4.0);
-
-            let filter = self.custom.filter.to_lowercase();
-            let sort = self.custom.sort;
-            let files = &self.custom.matched_files;
-            let selected = &mut self.custom.selected;
-            if files.is_empty() {
-                egui::ScrollArea::vertical()
-                    .id_source("custom_scroll")
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| empty_state(ui, "Nothing here yet — run a scan."));
-                return;
-            }
-            // Sort+filter once, then virtualize — huge scans otherwise lay
-            // out every row on every frame.
-            let mut view: Vec<(&MatchedFile, String)> = files
-                .iter()
-                .filter(|f| {
-                    filter.is_empty()
-                        || f.path
-                            .to_string_lossy()
-                            .to_lowercase()
-                            .contains(&filter)
-                })
-                .map(|f| (f, name_key(&f.path)))
-                .collect();
-            view.sort_by(|a, b| {
-                sort.compare((a.0.size, a.1.as_str()), (b.0.size, b.1.as_str()))
-            });
-            let row_h = ui.text_style_height(&egui::TextStyle::Monospace) + 8.0;
+    /// Two-column scan layout: a fixed-width setup column on the left, the
+    /// results card filling the rest — the arrangement pro cleaners use.
+    /// Falls back to a single scrollable column on narrow windows.
+    fn scan_page(
+        &mut self,
+        ui: &mut egui::Ui,
+        id: &str,
+        setup: impl FnOnce(&mut Self, &mut egui::Ui),
+        results: impl FnOnce(&mut Self, &mut egui::Ui),
+    ) {
+        const SETUP_W: f32 = 300.0;
+        const GAP: f32 = 10.0;
+        if ui.available_width() < SETUP_W + 420.0 {
             egui::ScrollArea::vertical()
-                .id_source("custom_scroll")
+                .id_source(format!("{}_page", id))
                 .auto_shrink([false, false])
-                .show_rows(ui, row_h, view.len(), |ui, range| {
-                    for (f, _) in &view[range] {
-                        ui.horizontal(|ui| {
-                            let mut on = selected.contains(&f.path);
-                            if ui.checkbox(&mut on, "").changed() {
-                                if on {
-                                    selected.insert(f.path.clone());
-                                } else {
-                                    selected.remove(&f.path);
-                                }
-                            }
-                            let resp = ui.monospace(f.path.display().to_string());
-                            file_row_menu(&resp, &f.path);
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    ui.label(
-                                        egui::RichText::new(helpers::human_size(
-                                            f.size,
-                                        ))
-                                        .weak(),
-                                    );
-                                },
-                            );
-                        });
-                    }
+                .show(ui, |ui| {
+                    setup(self, ui);
+                    ui.add_space(GAP);
+                    results(self, ui);
                 });
+            return;
+        }
+        let h = ui.available_height();
+        ui.horizontal_top(|ui| {
+            ui.allocate_ui_with_layout(
+                egui::vec2(SETUP_W, h),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_source(format!("{}_setup", id))
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| setup(self, ui));
+                },
+            );
+            ui.add_space(GAP);
+            let w = ui.available_width().max(120.0);
+            ui.allocate_ui_with_layout(
+                egui::vec2(w, h),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| results(self, ui),
+            );
         });
     }
 
-    fn draw_duplicates(&mut self, ui: &mut egui::Ui) {
-        let busy = self.busy();
+    fn draw_custom_clean(&mut self, ui: &mut egui::Ui) {
+        self.scan_page(
+            ui,
+            "custom",
+            |s, ui| {
+                card(ui, "Scan setup", |ui| {
+                    dir_picker(ui, &mut s.custom.dir_path);
+                    ui.add_space(6.0);
+                    egui::Grid::new("custom_filters")
+                        .num_columns(2)
+                        .spacing([10.0, 6.0])
+                        .show(ui, |ui| {
+                            ui.label("Extensions");
+                            ui.add(
+                                egui::TextEdit::singleline(&mut s.custom.extensions)
+                                    .hint_text("tmp, log")
+                                    .desired_width(f32::INFINITY),
+                            );
+                            ui.end_row();
 
-        card(ui, "Scan setup", |ui| {
-            dir_picker(ui, &mut self.duplicates.dir_path);
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                if primary_button(ui, !busy, "Scan for duplicates").clicked() {
-                    self.start_duplicates_scan();
-                }
-                if ui
-                    .add_enabled(
-                        !busy && !self.duplicates.groups.is_empty(),
-                        egui::Button::new("Select all"),
-                    )
-                    .clicked()
-                {
-                    self.duplicates.selected_files = self
-                        .duplicates
-                        .groups
-                        .iter()
-                        .flat_map(|g| g.files.iter().skip(1).cloned())
-                        .collect();
-                    self.duplicates.total_wasted = self.dup_wasted();
-                }
-                if ui
-                    .add_enabled(
-                        !busy && !self.duplicates.groups.is_empty(),
-                        egui::Button::new("Keep newest"),
-                    )
-                    .on_hover_text("Keep only the most recently modified copy in each group")
-                    .clicked()
-                {
-                    self.duplicates.selected_files =
-                        dupes_select_keeping(&mut self.duplicates.groups, true);
-                    self.duplicates.total_wasted = self.dup_wasted();
-                }
-                if ui
-                    .add_enabled(
-                        !busy && !self.duplicates.groups.is_empty(),
-                        egui::Button::new("Keep oldest"),
-                    )
-                    .on_hover_text("Keep only the oldest copy in each group")
-                    .clicked()
-                {
-                    self.duplicates.selected_files =
-                        dupes_select_keeping(&mut self.duplicates.groups, false);
-                    self.duplicates.total_wasted = self.dup_wasted();
-                }
-                if ui
-                    .add_enabled(
-                        !busy && !self.duplicates.selected_files.is_empty(),
-                        egui::Button::new("Clear selection"),
-                    )
-                    .clicked()
-                {
-                    self.duplicates.selected_files.clear();
-                    self.duplicates.total_wasted = 0;
-                }
-                let n = self.duplicates.selected_files.len();
-                if danger_button(ui, !busy && n > 0, format!("Clean {} selected", n))
-                    .clicked()
-                {
-                    if self.settings.confirm_clean {
-                        self.confirm_title = "Clean duplicates?".to_string();
-                        self.confirm_body = format!(
-                            "Delete {} selected duplicate files ({})? The first file in each group is kept.",
-                            n,
-                            helpers::human_size(self.duplicates.total_wasted)
+                            ui.label("Glob pattern");
+                            ui.add(
+                                egui::TextEdit::singleline(&mut s.custom.pattern)
+                                    .hint_text("*.tmp")
+                                    .desired_width(f32::INFINITY),
+                            );
+                            ui.end_row();
+
+                            ui.label("Older than (days)");
+                            ui.add(
+                                egui::Slider::new(&mut s.custom.older_than_days, 0..=36500)
+                                    .text("days"),
+                            );
+                            ui.end_row();
+
+                            ui.label("Min size (bytes)");
+                            ui.add(
+                                egui::DragValue::new(&mut s.custom.min_size_bytes)
+                                    .speed(1000),
+                            );
+                            ui.end_row();
+
+                            ui.label("Max size (bytes)");
+                            ui.add(
+                                egui::DragValue::new(&mut s.custom.max_size_bytes)
+                                    .speed(1000),
+                            );
+                            ui.end_row();
+
+                            ui.label("Exclude dirs");
+                            ui.add(
+                                egui::TextEdit::singleline(&mut s.custom.exclude_dirs)
+                                    .hint_text("comma separated")
+                                    .desired_width(f32::INFINITY),
+                            );
+                            ui.end_row();
+                        });
+                    ui.label(
+                        egui::RichText::new("Max size 0 = no limit. Excludes are absolute paths.")
+                            .weak()
+                            .small(),
+                    );
+
+                    ui.add_space(8.0);
+                    ui.label(egui::RichText::new("Presets").weak().small());
+                    ui.add_space(2.0);
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.small_button("Temp & logs").clicked() {
+                            s.custom.extensions = "tmp,log,bak,dmp".to_string();
+                            s.custom.pattern.clear();
+                            s.custom.older_than_days = 0;
+                            s.custom.min_size_bytes = 0;
+                            s.custom.max_size_bytes = 0;
+                        }
+                        if ui.small_button("Old files (30d+)").clicked() {
+                            s.custom.older_than_days = 30;
+                            s.custom.extensions.clear();
+                            s.custom.pattern.clear();
+                            s.custom.min_size_bytes = 0;
+                            s.custom.max_size_bytes = 0;
+                        }
+                        if ui.small_button("Big media (50MB+)").clicked() {
+                            s.custom.extensions =
+                                "mp4,mkv,avi,mov,mp3,flac,wav".to_string();
+                            s.custom.min_size_bytes = 50 * 1024 * 1024;
+                            s.custom.max_size_bytes = 0;
+                            s.custom.older_than_days = 0;
+                            s.custom.pattern.clear();
+                        }
+                        if ui.small_button("Images").clicked() {
+                            s.custom.extensions =
+                                "png,jpg,jpeg,gif,bmp,webp".to_string();
+                            s.custom.pattern.clear();
+                            s.custom.older_than_days = 0;
+                            s.custom.min_size_bytes = 0;
+                            s.custom.max_size_bytes = 0;
+                        }
+                        if ui.small_button("Old Downloads").clicked() {
+                            if let Some(d) = dirs::download_dir() {
+                                s.custom.dir_path = d.display().to_string();
+                            }
+                            s.custom.older_than_days = 30;
+                            s.custom.extensions.clear();
+                            s.custom.pattern.clear();
+                            s.custom.min_size_bytes = 0;
+                            s.custom.max_size_bytes = 0;
+                        }
+                    });
+
+                    ui.add_space(10.0);
+                    if primary_button_fill(ui, !s.busy(), "Scan folder")
+                        .on_hover_text("Scan the folder using the filters above")
+                        .clicked()
+                    {
+                        s.start_custom_scan();
+                    }
+                });
+            },
+            |s, ui| {
+                let busy = s.busy();
+                card(ui, "Results", |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        stat_chip(
+                            ui,
+                            format!("{}", s.custom.matched_files.len()),
+                            "files matched",
                         );
-                        self.confirm_action = Some(ConfirmAction::CleanDuplicates);
-                    } else {
-                        self.start_clean_duplicates();
-                    }
-                }
-                if ui
-                    .add_enabled(
-                        !self.duplicates.groups.is_empty(),
-                        egui::Button::new("Export report"),
-                    )
-                    .clicked()
-                {
-                    let files: Vec<MatchedFile> = self
-                        .duplicates
-                        .groups
-                        .iter()
-                        .flat_map(|g| {
-                            g.files.iter().map(|p| MatchedFile {
-                                path: p.clone(),
-                                size: g.size,
-                            })
-                        })
-                        .collect();
-                    match helpers::export_report(&files, "duplicates") {
-                        Ok(p) => {
-                            self.status = format!("Report saved: {}", p.display());
-                            self.status_toast = 60;
-                        }
-                        Err(e) => {
-                            self.status = format!("Export error: {}", e);
-                            self.status_toast = 60;
-                        }
-                    }
-                }
-            });
-            ui.label(
-                egui::RichText::new(
-                    "Two-stage hashing: groups by size, quick-hashes 8 KB, then full SHA-256.",
-                )
-                .weak()
-                .small(),
-            );
-            ui.add_space(6.0);
-            ui.collapsing("Exclude folders from duplicate scans", |ui| {
-                ui.label(
-                    egui::RichText::new(
-                        "Files under these folders are skipped — one per line or comma-separated.",
-                    )
-                    .weak()
-                    .small(),
-                );
-                if ui
-                    .add(
-                        egui::TextEdit::multiline(&mut self.settings.dupe_excludes)
-                            .desired_rows(2)
-                            .hint_text("e.g. C:\\Users\\you\\SyncedFolder"),
-                    )
-                    .changed()
-                {
-                    self.settings.save();
-                }
-            });
-        });
-
-        ui.add_space(10.0);
-
-        card(ui, "Results", |ui| {
-            ui.label(format!(
-                "{} groups · {} reclaimable",
-                self.duplicates.groups.len(),
-                helpers::human_size(self.duplicates.total_wasted)
-            ));
-            ui.add_space(4.0);
-
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Filter:").weak().small());
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.duplicates.filter)
-                        .hint_text("type to filter results")
-                        .desired_width(220.0),
-                );
-                if !self.duplicates.filter.is_empty()
-                    && ui.small_button("Clear").clicked()
-                {
-                    self.duplicates.filter.clear();
-                }
-                ui.separator();
-                ui.label(egui::RichText::new("Sort:").weak().small());
-                egui::ComboBox::from_id_source("dup_sort")
-                    .selected_text(self.duplicates.sort.label())
-                    .show_ui(ui, |ui| {
-                        for s in SortMode::all() {
-                            ui.selectable_value(&mut self.duplicates.sort, *s, s.label());
-                        }
+                        stat_chip(
+                            ui,
+                            helpers::human_size(s.custom.total_matched_size),
+                            "matched",
+                        );
+                        stat_chip(
+                            ui,
+                            format!("{}", s.custom.selected.len()),
+                            "selected",
+                        );
                     });
-            });
-            ui.add_space(4.0);
 
-            let filter = self.duplicates.filter.to_lowercase();
-            let sort = self.duplicates.sort;
-            let groups = &self.duplicates.groups;
-            let selected = &mut self.duplicates.selected_files;
-            let mut changed = false;
-
-            egui::ScrollArea::vertical()
-                .id_source("duplicates_scroll")
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    if groups.is_empty() {
-                        empty_state(ui, "No duplicate groups found yet — run a scan.");
-                        return;
+                    // File-type breakdown: which extensions account for the size.
+                    if !s.custom.matched_files.is_empty() {
+                        let mut by_ext: BTreeMap<String, (u64, u64)> = BTreeMap::new();
+                        for f in &s.custom.matched_files {
+                            let ext = f
+                                .path
+                                .extension()
+                                .and_then(|e| e.to_str())
+                                .map(|e| e.to_lowercase())
+                                .unwrap_or_else(|| "(no ext)".to_string());
+                            let ent = by_ext.entry(ext).or_default();
+                            ent.0 += 1;
+                            ent.1 += f.size;
+                        }
+                        let mut ranked: Vec<(String, (u64, u64))> =
+                            by_ext.into_iter().collect();
+                        ranked.sort_by(|a, b| b.1 .1.cmp(&a.1 .1));
+                        ranked.truncate(10);
+                        ui.add_space(4.0);
+                        ui.horizontal_wrapped(|ui| {
+                            for (ext, (count, size)) in &ranked {
+                                ui.label(
+                                    egui::RichText::new(format!(
+                                        ".{} {} · {}",
+                                        ext,
+                                        count,
+                                        helpers::human_size(*size)
+                                    ))
+                                    .small()
+                                    .weak(),
+                                );
+                            }
+                        });
                     }
-                    let mut view: Vec<(&DuplicateGroup, String)> = groups
-                        .iter()
-                        .filter(|g| {
-                            filter.is_empty()
-                                || g.files.iter().any(|f| {
-                                    f.to_string_lossy()
-                                        .to_lowercase()
-                                        .contains(&filter)
-                                })
-                        })
-                        .map(|g| {
-                            (
-                                g,
-                                g.files
-                                    .first()
-                                    .map(|f| name_key(f))
-                                    .unwrap_or_default(),
-                            )
-                        })
-                        .collect();
-                    view.sort_by(|a, b| {
-                        // "Size" for a group = total reclaimable bytes.
-                        let wasted = |g: &DuplicateGroup| {
-                            g.size * (g.files.len().saturating_sub(1)) as u64
-                        };
-                        sort.compare(
-                            (wasted(a.0), a.1.as_str()),
-                            (wasted(b.0), b.1.as_str()),
-                        )
-                    });
-                    for (group, _) in view {
-                        ui.collapsing(
-                            format!(
-                                "{} files · {} each · {}",
-                                group.files.len(),
-                                helpers::human_size(group.size),
-                                &group.hash[..8.min(group.hash.len())]
-                            ),
+                    ui.add_space(6.0);
+
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Filter:").weak().small());
+                        ui.add(
+                            egui::TextEdit::singleline(&mut s.custom.filter)
+                                .hint_text("type to filter results")
+                                .desired_width(180.0),
+                        );
+                        if !s.custom.filter.is_empty() && ui.small_button("Clear").clicked() {
+                            s.custom.filter.clear();
+                        }
+                        ui.separator();
+                        ui.label(egui::RichText::new("Sort:").weak().small());
+                        egui::ComboBox::from_id_source("custom_sort")
+                            .selected_text(s.custom.sort.label())
+                            .show_ui(ui, |ui| {
+                                for sm in SortMode::all() {
+                                    ui.selectable_value(&mut s.custom.sort, *sm, sm.label());
+                                }
+                            });
+                        ui.with_layout(
+                            egui::Layout::right_to_left(egui::Align::Center),
                             |ui| {
-                                for (i, file) in group.files.iter().enumerate() {
-                                    ui.horizontal(|ui| {
-                                        if i == 0 {
-                                            ui.colored_label(accent(ui), "keep");
-                                        } else {
-                                            let mut on = selected.contains(file);
-                                            if ui.checkbox(&mut on, "").changed() {
-                                                changed = true;
-                                                if on {
-                                                    selected.push(file.clone());
-                                                } else {
-                                                    selected.retain(|x| x != file);
-                                                }
-                                            }
-                                        }
-                                        let resp =
-                                            ui.monospace(file.display().to_string());
-                                        file_row_menu(&resp, file);
-                                    });
+                                if ui
+                                    .add_enabled(
+                                        !busy && !s.custom.selected.is_empty(),
+                                        egui::Button::new("Clear sel.").small(),
+                                    )
+                                    .clicked()
+                                {
+                                    s.custom.selected.clear();
+                                }
+                                if ui
+                                    .add_enabled(
+                                        !busy && !s.custom.matched_files.is_empty(),
+                                        egui::Button::new("Select all").small(),
+                                    )
+                                    .on_hover_text(
+                                        "Select all results — respects the active filter",
+                                    )
+                                    .clicked()
+                                {
+                                    let flt = s.custom.filter.to_lowercase();
+                                    s.custom.selected = s
+                                        .custom
+                                        .matched_files
+                                        .iter()
+                                        .filter(|f| {
+                                            flt.is_empty()
+                                                || f.path
+                                                    .to_string_lossy()
+                                                    .to_lowercase()
+                                                    .contains(&flt)
+                                        })
+                                        .map(|f| f.path.clone())
+                                        .collect();
                                 }
                             },
                         );
+                    });
+                    ui.add_space(4.0);
+
+                    let filter = s.custom.filter.to_lowercase();
+                    let sort = s.custom.sort;
+                    let files = &s.custom.matched_files;
+                    let selected = &mut s.custom.selected;
+                    let list_h = Self::list_area_h(ui);
+                    if files.is_empty() {
+                        ui.allocate_ui(
+                            egui::vec2(ui.available_width(), list_h),
+                            |ui| {
+                                egui::ScrollArea::vertical()
+                                    .id_source("custom_scroll")
+                                    .auto_shrink([false, false])
+                                    .show(ui, |ui| {
+                                        empty_state(ui, "Nothing here yet — run a scan.")
+                                    });
+                            },
+                        );
+                    } else {
+                        // Sort+filter once, then virtualize — huge scans
+                        // otherwise lay out every row on every frame.
+                        let mut view: Vec<(&MatchedFile, String)> = files
+                            .iter()
+                            .filter(|f| {
+                                filter.is_empty()
+                                    || f.path
+                                        .to_string_lossy()
+                                        .to_lowercase()
+                                        .contains(&filter)
+                            })
+                            .map(|f| (f, name_key(&f.path)))
+                            .collect();
+                        view.sort_by(|a, b| {
+                            sort.compare((a.0.size, a.1.as_str()), (b.0.size, b.1.as_str()))
+                        });
+                        let row_h =
+                            ui.text_style_height(&egui::TextStyle::Monospace) + 8.0;
+                        ui.allocate_ui(
+                            egui::vec2(ui.available_width(), list_h),
+                            |ui| {
+                                egui::ScrollArea::vertical()
+                                    .id_source("custom_scroll")
+                                    .auto_shrink([false, false])
+                                    .show_rows(ui, row_h, view.len(), |ui, range| {
+                                        for (f, _) in &view[range] {
+                                            ui.horizontal(|ui| {
+                                                let mut on = selected.contains(&f.path);
+                                                if ui.checkbox(&mut on, "").changed() {
+                                                    if on {
+                                                        selected.insert(f.path.clone());
+                                                    } else {
+                                                        selected.remove(&f.path);
+                                                    }
+                                                }
+                                                let resp = ui.monospace(
+                                                    f.path.display().to_string(),
+                                                );
+                                                file_row_menu(&resp, &f.path);
+                                                ui.with_layout(
+                                                    egui::Layout::right_to_left(
+                                                        egui::Align::Center,
+                                                    ),
+                                                    |ui| {
+                                                        ui.label(
+                                                            egui::RichText::new(
+                                                                helpers::human_size(
+                                                                    f.size,
+                                                                ),
+                                                            )
+                                                            .weak(),
+                                                        );
+                                                    },
+                                                );
+                                            });
+                                        }
+                                    });
+                            },
+                        );
+                    }
+
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        if ui
+                            .add_enabled(
+                                !s.custom.matched_files.is_empty(),
+                                egui::Button::new("Export report"),
+                            )
+                            .clicked()
+                        {
+                            match helpers::export_report(&s.custom.matched_files, "custom")
+                            {
+                                Ok(p) => {
+                                    s.status = format!("Report saved: {}", p.display());
+                                    s.status_toast = 60;
+                                }
+                                Err(e) => {
+                                    s.status = format!("Export error: {}", e);
+                                    s.status_toast = 60;
+                                }
+                            }
+                        }
+                        ui.with_layout(
+                            egui::Layout::right_to_left(egui::Align::Center),
+                            |ui| {
+                                let n = s.custom.selected.len();
+                                let sel_size: u64 = s
+                                    .custom
+                                    .matched_files
+                                    .iter()
+                                    .filter(|f| s.custom.selected.contains(&f.path))
+                                    .map(|f| f.size)
+                                    .sum();
+                                if danger_button(
+                                    ui,
+                                    !busy && n > 0,
+                                    format!("Clean {} files", n),
+                                )
+                                .on_hover_text(
+                                    "Delete the selected files — honors dry run and recycle bin settings",
+                                )
+                                .clicked()
+                                {
+                                    if s.settings.confirm_clean {
+                                        s.confirm_title =
+                                            "Clean selected files?".to_string();
+                                        s.confirm_body = format!(
+                                            "Delete the {} selected files ({})?",
+                                            n,
+                                            helpers::human_size(sel_size)
+                                        );
+                                        s.confirm_action =
+                                            Some(ConfirmAction::CleanFiles(s.tab));
+                                    } else {
+                                        s.start_clean_selected(s.tab);
+                                    }
+                                }
+                            },
+                        );
+                    });
+                });
+            },
+        );
+    }
+
+    fn draw_duplicates(&mut self, ui: &mut egui::Ui) {
+        self.scan_page(
+            ui,
+            "dupes",
+            |s, ui| {
+                card(ui, "Scan setup", |ui| {
+                    dir_picker(ui, &mut s.duplicates.dir_path);
+                    ui.add_space(6.0);
+                    ui.label(
+                        egui::RichText::new(
+                            "Two-stage hashing: groups by size, quick-hashes 8 KB, then full SHA-256.",
+                        )
+                        .weak()
+                        .small(),
+                    );
+                    ui.add_space(6.0);
+                    ui.collapsing("Exclude folders", |ui| {
+                        ui.label(
+                            egui::RichText::new(
+                                "Skipped during scans — one per line or comma-separated.",
+                            )
+                            .weak()
+                            .small(),
+                        );
+                        if ui
+                            .add(
+                                egui::TextEdit::multiline(&mut s.settings.dupe_excludes)
+                                    .desired_rows(3)
+                                    .desired_width(f32::INFINITY)
+                                    .hint_text("e.g. C:\\Users\\you\\SyncedFolder"),
+                            )
+                            .changed()
+                        {
+                            s.settings.save();
+                        }
+                    });
+
+                    ui.add_space(10.0);
+                    if primary_button_fill(ui, !s.busy(), "Scan for duplicates").clicked()
+                    {
+                        s.start_duplicates_scan();
                     }
                 });
+            },
+            |s, ui| {
+                let busy = s.busy();
+                card(ui, "Results", |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        stat_chip(
+                            ui,
+                            format!("{}", s.duplicates.groups.len()),
+                            "groups",
+                        );
+                        stat_chip(
+                            ui,
+                            helpers::human_size(s.duplicates.total_wasted),
+                            "reclaimable",
+                        );
+                        stat_chip(
+                            ui,
+                            format!("{}", s.duplicates.selected_files.len()),
+                            "marked",
+                        );
+                    });
+                    ui.add_space(6.0);
 
-            if changed {
-                self.duplicates.total_wasted = self.dup_wasted();
-            }
-        });
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Filter:").weak().small());
+                        ui.add(
+                            egui::TextEdit::singleline(&mut s.duplicates.filter)
+                                .hint_text("type to filter results")
+                                .desired_width(180.0),
+                        );
+                        if !s.duplicates.filter.is_empty()
+                            && ui.small_button("Clear").clicked()
+                        {
+                            s.duplicates.filter.clear();
+                        }
+                        ui.separator();
+                        ui.label(egui::RichText::new("Sort:").weak().small());
+                        egui::ComboBox::from_id_source("dup_sort")
+                            .selected_text(s.duplicates.sort.label())
+                            .show_ui(ui, |ui| {
+                                for sm in SortMode::all() {
+                                    ui.selectable_value(
+                                        &mut s.duplicates.sort,
+                                        *sm,
+                                        sm.label(),
+                                    );
+                                }
+                            });
+                        ui.with_layout(
+                            egui::Layout::right_to_left(egui::Align::Center),
+                            |ui| {
+                                ui.label(
+                                    egui::RichText::new(
+                                        "First file in each group is kept",
+                                    )
+                                    .weak()
+                                    .small(),
+                                );
+                            },
+                        );
+                    });
+                    ui.add_space(4.0);
+
+                    let filter = s.duplicates.filter.to_lowercase();
+                    let sort = s.duplicates.sort;
+                    let groups = &s.duplicates.groups;
+                    let selected = &mut s.duplicates.selected_files;
+                    let mut changed = false;
+                    let list_h = Self::list_area_h(ui);
+                    ui.allocate_ui(egui::vec2(ui.available_width(), list_h), |ui| {
+                        egui::ScrollArea::vertical()
+                            .id_source("duplicates_scroll")
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                if groups.is_empty() {
+                                    empty_state(
+                                        ui,
+                                        "No duplicate groups found yet — run a scan.",
+                                    );
+                                    return;
+                                }
+                                let mut view: Vec<(&DuplicateGroup, String)> = groups
+                                    .iter()
+                                    .filter(|g| {
+                                        filter.is_empty()
+                                            || g.files.iter().any(|f| {
+                                                f.to_string_lossy()
+                                                    .to_lowercase()
+                                                    .contains(&filter)
+                                            })
+                                    })
+                                    .map(|g| {
+                                        (
+                                            g,
+                                            g.files
+                                                .first()
+                                                .map(|f| name_key(f))
+                                                .unwrap_or_default(),
+                                        )
+                                    })
+                                    .collect();
+                                view.sort_by(|a, b| {
+                                    // "Size" for a group = total reclaimable bytes.
+                                    let wasted = |g: &DuplicateGroup| {
+                                        g.size
+                                            * (g.files.len().saturating_sub(1)) as u64
+                                    };
+                                    sort.compare(
+                                        (wasted(a.0), a.1.as_str()),
+                                        (wasted(b.0), b.1.as_str()),
+                                    )
+                                });
+                                for (group, _) in view {
+                                    ui.collapsing(
+                                        format!(
+                                            "{} files · {} each · {}",
+                                            group.files.len(),
+                                            helpers::human_size(group.size),
+                                            &group.hash[..8.min(group.hash.len())]
+                                        ),
+                                        |ui| {
+                                            for (i, file) in
+                                                group.files.iter().enumerate()
+                                            {
+                                                ui.horizontal(|ui| {
+                                                    if i == 0 {
+                                                        ui.colored_label(
+                                                            accent(ui), "keep",
+                                                        );
+                                                    } else {
+                                                        let mut on =
+                                                            selected.contains(file);
+                                                        if ui
+                                                            .checkbox(&mut on, "")
+                                                            .changed()
+                                                        {
+                                                            changed = true;
+                                                            if on {
+                                                                selected
+                                                                    .push(file.clone());
+                                                            } else {
+                                                                selected.retain(
+                                                                    |x| x != file,
+                                                                );
+                                                            }
+                                                        }
+                                                    }
+                                                    let resp = ui.monospace(
+                                                        file.display().to_string(),
+                                                    );
+                                                    file_row_menu(&resp, file);
+                                                });
+                                            }
+                                        },
+                                    );
+                                }
+                            });
+                    });
+
+                    if changed {
+                        s.duplicates.total_wasted = s.dup_wasted();
+                    }
+
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        if ui
+                            .add_enabled(
+                                !s.duplicates.groups.is_empty(),
+                                egui::Button::new("Export report"),
+                            )
+                            .clicked()
+                        {
+                            let files: Vec<MatchedFile> = s
+                                .duplicates
+                                .groups
+                                .iter()
+                                .flat_map(|g| {
+                                    g.files.iter().map(|p| MatchedFile {
+                                        path: p.clone(),
+                                        size: g.size,
+                                    })
+                                })
+                                .collect();
+                            match helpers::export_report(&files, "duplicates") {
+                                Ok(p) => {
+                                    s.status =
+                                        format!("Report saved: {}", p.display());
+                                    s.status_toast = 60;
+                                }
+                                Err(e) => {
+                                    s.status = format!("Export error: {}", e);
+                                    s.status_toast = 60;
+                                }
+                            }
+                        }
+                        ui.separator();
+                        if ui
+                            .add_enabled(
+                                !busy && !s.duplicates.groups.is_empty(),
+                                egui::Button::new("Select all").small(),
+                            )
+                            .clicked()
+                        {
+                            s.duplicates.selected_files = s
+                                .duplicates
+                                .groups
+                                .iter()
+                                .flat_map(|g| g.files.iter().skip(1).cloned())
+                                .collect();
+                            s.duplicates.total_wasted = s.dup_wasted();
+                        }
+                        if ui
+                            .add_enabled(
+                                !busy && !s.duplicates.groups.is_empty(),
+                                egui::Button::new("Keep newest").small(),
+                            )
+                            .on_hover_text(
+                                "Keep only the most recently modified copy in each group",
+                            )
+                            .clicked()
+                        {
+                            s.duplicates.selected_files =
+                                dupes_select_keeping(&mut s.duplicates.groups, true);
+                            s.duplicates.total_wasted = s.dup_wasted();
+                        }
+                        if ui
+                            .add_enabled(
+                                !busy && !s.duplicates.groups.is_empty(),
+                                egui::Button::new("Keep oldest").small(),
+                            )
+                            .on_hover_text("Keep only the oldest copy in each group")
+                            .clicked()
+                        {
+                            s.duplicates.selected_files =
+                                dupes_select_keeping(&mut s.duplicates.groups, false);
+                            s.duplicates.total_wasted = s.dup_wasted();
+                        }
+                        if ui
+                            .add_enabled(
+                                !busy && !s.duplicates.selected_files.is_empty(),
+                                egui::Button::new("Clear").small(),
+                            )
+                            .clicked()
+                        {
+                            s.duplicates.selected_files.clear();
+                            s.duplicates.total_wasted = 0;
+                        }
+                        ui.with_layout(
+                            egui::Layout::right_to_left(egui::Align::Center),
+                            |ui| {
+                                let n = s.duplicates.selected_files.len();
+                                if danger_button(
+                                    ui,
+                                    !busy && n > 0,
+                                    format!("Clean {} marked", n),
+                                )
+                                .clicked()
+                                {
+                                    if s.settings.confirm_clean {
+                                        s.confirm_title =
+                                            "Clean duplicates?".to_string();
+                                        s.confirm_body = format!(
+                                            "Delete {} selected duplicate files ({})? The first file in each group is kept.",
+                                            n,
+                                            helpers::human_size(
+                                                s.duplicates.total_wasted
+                                            )
+                                        );
+                                        s.confirm_action =
+                                            Some(ConfirmAction::CleanDuplicates);
+                                    } else {
+                                        s.start_clean_duplicates();
+                                    }
+                                }
+                            },
+                        );
+                    });
+                });
+            },
+        );
     }
 
     fn draw_large_files(&mut self, ui: &mut egui::Ui) {
-        let busy = self.busy();
-
-        card(ui, "Scan setup", |ui| {
-            dir_picker(ui, &mut self.large_files.dir_path);
-            ui.add_space(6.0);
-            ui.horizontal(|ui| {
-                ui.label("Larger than");
-                ui.add(
-                    egui::Slider::new(&mut self.large_files.threshold_mb, 1..=10240)
-                        .text("MB"),
-                );
-            });
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                if primary_button(ui, !busy, "Scan for large files").clicked() {
-                    self.start_large_files_scan();
-                }
-                if ui
-                    .add_enabled(
-                        !busy && !self.large_files.files.is_empty(),
-                        egui::Button::new("Select all"),
-                    )
-                    .on_hover_text(
-                        "Select all results — respects the active filter",
-                    )
-                    .clicked()
-                {
-                    let flt = self.large_files.filter.to_lowercase();
-                    self.large_files.selected = self
-                        .large_files
-                        .files
-                        .iter()
-                        .filter(|f| {
-                            flt.is_empty()
-                                || f.path
-                                    .to_string_lossy()
-                                    .to_lowercase()
-                                    .contains(&flt)
-                        })
-                        .map(|f| f.path.clone())
-                        .collect();
-                }
-                if ui
-                    .add_enabled(
-                        !busy && !self.large_files.selected.is_empty(),
-                        egui::Button::new("Clear selection"),
-                    )
-                    .clicked()
-                {
-                    self.large_files.selected.clear();
-                }
-                let n = self.large_files.selected.len();
-                if danger_button(ui, !busy && n > 0, format!("Clean {} selected", n))
-                    .clicked()
-                {
-                    if self.settings.confirm_clean {
-                        self.confirm_title = "Delete selected large files?".to_string();
-                        self.confirm_body =
-                            format!("Delete the {} selected files?", n);
-                        self.confirm_action = Some(ConfirmAction::CleanFiles(self.tab));
-                    } else {
-                        self.start_clean_selected(self.tab);
-                    }
-                }
-                if ui
-                    .add_enabled(
-                        !self.large_files.files.is_empty(),
-                        egui::Button::new("Export report"),
-                    )
-                    .clicked()
-                {
-                    let files: Vec<MatchedFile> = self
-                        .large_files
-                        .files
-                        .iter()
-                        .map(|f| MatchedFile {
-                            path: f.path.clone(),
-                            size: f.size,
-                        })
-                        .collect();
-                    match helpers::export_report(&files, "large_files") {
-                        Ok(p) => {
-                            self.status = format!("Report saved: {}", p.display());
-                            self.status_toast = 60;
-                        }
-                        Err(e) => {
-                            self.status = format!("Export error: {}", e);
-                            self.status_toast = 60;
-                        }
-                    }
-                }
-            });
-        });
-
-        ui.add_space(10.0);
-
-        card(ui, "Results", |ui| {
-            ui.label(format!(
-                "{} files · {} total · {} selected",
-                self.large_files.files.len(),
-                helpers::human_size(self.large_files.total_size),
-                self.large_files.selected.len()
-            ));
-            ui.add_space(4.0);
-
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Filter:").weak().small());
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.large_files.filter)
-                        .hint_text("type to filter results")
-                        .desired_width(220.0),
-                );
-                if !self.large_files.filter.is_empty()
-                    && ui.small_button("Clear").clicked()
-                {
-                    self.large_files.filter.clear();
-                }
-                ui.separator();
-                ui.label(egui::RichText::new("Sort:").weak().small());
-                egui::ComboBox::from_id_source("large_sort")
-                    .selected_text(self.large_files.sort.label())
-                    .show_ui(ui, |ui| {
-                        for s in SortMode::all() {
-                            ui.selectable_value(&mut self.large_files.sort, *s, s.label());
-                        }
+        self.scan_page(
+            ui,
+            "large",
+            |s, ui| {
+                card(ui, "Scan setup", |ui| {
+                    dir_picker(ui, &mut s.large_files.dir_path);
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        ui.label("Larger than");
+                        ui.add(
+                            egui::Slider::new(&mut s.large_files.threshold_mb, 1..=10240)
+                                .text("MB"),
+                        );
                     });
-            });
-            ui.add_space(4.0);
+                    ui.label(
+                        egui::RichText::new(
+                            "Finds the biggest files under the folder — the space hogs.",
+                        )
+                        .weak()
+                        .small(),
+                    );
 
-            let filter = self.large_files.filter.to_lowercase();
-            let sort = self.large_files.sort;
-            let files = &self.large_files.files;
-            let selected = &mut self.large_files.selected;
-            if files.is_empty() {
-                egui::ScrollArea::vertical()
-                    .id_source("large_files_scroll")
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        empty_state(ui, "No large files found yet — run a scan.")
-                    });
-                return;
-            }
-            let mut view: Vec<(&LargeFile, String)> = files
-                .iter()
-                .filter(|f| {
-                    filter.is_empty()
-                        || f.path
-                            .to_string_lossy()
-                            .to_lowercase()
-                            .contains(&filter)
-                })
-                .map(|f| (f, name_key(&f.path)))
-                .collect();
-            view.sort_by(|a, b| {
-                sort.compare((a.0.size, a.1.as_str()), (b.0.size, b.1.as_str()))
-            });
-            let row_h = ui.text_style_height(&egui::TextStyle::Monospace) + 8.0;
-            egui::ScrollArea::vertical()
-                .id_source("large_files_scroll")
-                .auto_shrink([false, false])
-                .show_rows(ui, row_h, view.len(), |ui, range| {
-                    for (f, _) in &view[range] {
-                        ui.horizontal(|ui| {
-                            let mut on = selected.contains(&f.path);
-                            if ui.checkbox(&mut on, "").changed() {
-                                if on {
-                                    selected.push(f.path.clone());
-                                } else {
-                                    selected.retain(|x| x != &f.path);
-                                }
-                            }
-                            let resp = ui.monospace(f.path.display().to_string());
-                            file_row_menu(&resp, &f.path);
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    ui.label(
-                                        egui::RichText::new(helpers::human_size(f.size))
-                                            .weak(),
-                                    );
-                                    if ui.small_button("Locate").clicked() {
-                                        // Select the file itself, not just
-                                        // open its parent folder.
-                                        reveal_in_explorer(&f.path);
-                                    }
-                                },
-                            );
-                        });
+                    ui.add_space(10.0);
+                    if primary_button_fill(ui, !s.busy(), "Scan for large files")
+                        .clicked()
+                    {
+                        s.start_large_files_scan();
                     }
                 });
-        });
+            },
+            |s, ui| {
+                let busy = s.busy();
+                card(ui, "Results", |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        stat_chip(
+                            ui,
+                            format!("{}", s.large_files.files.len()),
+                            "files",
+                        );
+                        stat_chip(
+                            ui,
+                            helpers::human_size(s.large_files.total_size),
+                            "total",
+                        );
+                        stat_chip(
+                            ui,
+                            format!("{}", s.large_files.selected.len()),
+                            "selected",
+                        );
+                    });
+                    ui.add_space(6.0);
+
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Filter:").weak().small());
+                        ui.add(
+                            egui::TextEdit::singleline(&mut s.large_files.filter)
+                                .hint_text("type to filter results")
+                                .desired_width(180.0),
+                        );
+                        if !s.large_files.filter.is_empty()
+                            && ui.small_button("Clear").clicked()
+                        {
+                            s.large_files.filter.clear();
+                        }
+                        ui.separator();
+                        ui.label(egui::RichText::new("Sort:").weak().small());
+                        egui::ComboBox::from_id_source("large_sort")
+                            .selected_text(s.large_files.sort.label())
+                            .show_ui(ui, |ui| {
+                                for sm in SortMode::all() {
+                                    ui.selectable_value(
+                                        &mut s.large_files.sort,
+                                        *sm,
+                                        sm.label(),
+                                    );
+                                }
+                            });
+                        ui.with_layout(
+                            egui::Layout::right_to_left(egui::Align::Center),
+                            |ui| {
+                                if ui
+                                    .add_enabled(
+                                        !busy && !s.large_files.selected.is_empty(),
+                                        egui::Button::new("Clear sel.").small(),
+                                    )
+                                    .clicked()
+                                {
+                                    s.large_files.selected.clear();
+                                }
+                                if ui
+                                    .add_enabled(
+                                        !busy && !s.large_files.files.is_empty(),
+                                        egui::Button::new("Select all").small(),
+                                    )
+                                    .on_hover_text(
+                                        "Select all results — respects the active filter",
+                                    )
+                                    .clicked()
+                                {
+                                    let flt = s.large_files.filter.to_lowercase();
+                                    s.large_files.selected = s
+                                        .large_files
+                                        .files
+                                        .iter()
+                                        .filter(|f| {
+                                            flt.is_empty()
+                                                || f.path
+                                                    .to_string_lossy()
+                                                    .to_lowercase()
+                                                    .contains(&flt)
+                                        })
+                                        .map(|f| f.path.clone())
+                                        .collect();
+                                }
+                            },
+                        );
+                    });
+                    ui.add_space(4.0);
+
+                    let filter = s.large_files.filter.to_lowercase();
+                    let sort = s.large_files.sort;
+                    let files = &s.large_files.files;
+                    let selected = &mut s.large_files.selected;
+                    let list_h = Self::list_area_h(ui);
+                    if files.is_empty() {
+                        ui.allocate_ui(
+                            egui::vec2(ui.available_width(), list_h),
+                            |ui| {
+                                egui::ScrollArea::vertical()
+                                    .id_source("large_files_scroll")
+                                    .auto_shrink([false, false])
+                                    .show(ui, |ui| {
+                                        empty_state(
+                                            ui,
+                                            "No large files found yet — run a scan.",
+                                        )
+                                    });
+                            },
+                        );
+                    } else {
+                        let mut view: Vec<(&LargeFile, String)> = files
+                            .iter()
+                            .filter(|f| {
+                                filter.is_empty()
+                                    || f.path
+                                        .to_string_lossy()
+                                        .to_lowercase()
+                                        .contains(&filter)
+                            })
+                            .map(|f| (f, name_key(&f.path)))
+                            .collect();
+                        view.sort_by(|a, b| {
+                            sort.compare((a.0.size, a.1.as_str()), (b.0.size, b.1.as_str()))
+                        });
+                        let row_h =
+                            ui.text_style_height(&egui::TextStyle::Monospace) + 8.0;
+                        ui.allocate_ui(
+                            egui::vec2(ui.available_width(), list_h),
+                            |ui| {
+                                egui::ScrollArea::vertical()
+                                    .id_source("large_files_scroll")
+                                    .auto_shrink([false, false])
+                                    .show_rows(ui, row_h, view.len(), |ui, range| {
+                                        for (f, _) in &view[range] {
+                                            ui.horizontal(|ui| {
+                                                let mut on = selected.contains(&f.path);
+                                                if ui.checkbox(&mut on, "").changed() {
+                                                    if on {
+                                                        selected.push(f.path.clone());
+                                                    } else {
+                                                        selected.retain(|x| x != &f.path);
+                                                    }
+                                                }
+                                                let resp = ui.monospace(
+                                                    f.path.display().to_string(),
+                                                );
+                                                file_row_menu(&resp, &f.path);
+                                                ui.with_layout(
+                                                    egui::Layout::right_to_left(
+                                                        egui::Align::Center,
+                                                    ),
+                                                    |ui| {
+                                                        ui.label(
+                                                            egui::RichText::new(
+                                                                helpers::human_size(
+                                                                    f.size,
+                                                                ),
+                                                            )
+                                                            .weak(),
+                                                        );
+                                                        if ui
+                                                            .small_button("Locate")
+                                                            .clicked()
+                                                        {
+                                                            // Select the file itself,
+                                                            // not just its parent.
+                                                            reveal_in_explorer(&f.path);
+                                                        }
+                                                    },
+                                                );
+                                            });
+                                        }
+                                    });
+                            },
+                        );
+                    }
+
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        if ui
+                            .add_enabled(
+                                !s.large_files.files.is_empty(),
+                                egui::Button::new("Export report"),
+                            )
+                            .clicked()
+                        {
+                            let files: Vec<MatchedFile> = s
+                                .large_files
+                                .files
+                                .iter()
+                                .map(|f| MatchedFile {
+                                    path: f.path.clone(),
+                                    size: f.size,
+                                })
+                                .collect();
+                            match helpers::export_report(&files, "large_files") {
+                                Ok(p) => {
+                                    s.status =
+                                        format!("Report saved: {}", p.display());
+                                    s.status_toast = 60;
+                                }
+                                Err(e) => {
+                                    s.status = format!("Export error: {}", e);
+                                    s.status_toast = 60;
+                                }
+                            }
+                        }
+                        ui.with_layout(
+                            egui::Layout::right_to_left(egui::Align::Center),
+                            |ui| {
+                                let n = s.large_files.selected.len();
+                                if danger_button(
+                                    ui,
+                                    !busy && n > 0,
+                                    format!("Clean {} selected", n),
+                                )
+                                .clicked()
+                                {
+                                    if s.settings.confirm_clean {
+                                        s.confirm_title =
+                                            "Delete selected large files?"
+                                                .to_string();
+                                        s.confirm_body =
+                                            format!("Delete the {} selected files?", n);
+                                        s.confirm_action =
+                                            Some(ConfirmAction::CleanFiles(s.tab));
+                                    } else {
+                                        s.start_clean_selected(s.tab);
+                                    }
+                                }
+                            },
+                        );
+                    });
+                });
+            },
+        );
     }
 
     fn draw_system_cleaner(&mut self, ui: &mut egui::Ui) {
-        let busy = self.busy();
-
-        card(ui, "Cleaning targets", |ui| {
-            let mut remove_idx: Option<usize> = None;
-            let mut toggled: Vec<(String, bool)> = Vec::new();
-            for (i, target) in self.system.targets.iter_mut().enumerate() {
-                ui.horizontal(|ui| {
-                    if ui.checkbox(&mut target.enabled, "").changed() && !target.custom {
-                        toggled.push((target.name.clone(), target.enabled));
-                    }
-                    ui.vertical(|ui| {
+        self.scan_page(
+            ui,
+            "system",
+            |s, ui| {
+                card(ui, "Cleaning targets", |ui| {
+                    let mut remove_idx: Option<usize> = None;
+                    let mut toggled: Vec<(String, bool)> = Vec::new();
+                    for (i, target) in s.system.targets.iter_mut().enumerate() {
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(&target.name).strong());
-                            if target.custom {
-                                ui.label(
-                                    egui::RichText::new("custom").weak().small(),
-                                );
-                                if ui.small_button("✕").clicked() {
-                                    remove_idx = Some(i);
-                                }
+                            if ui.checkbox(&mut target.enabled, "").changed()
+                                && !target.custom
+                            {
+                                toggled.push((target.name.clone(), target.enabled));
                             }
+                            ui.vertical(|ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        egui::RichText::new(&target.name).strong(),
+                                    );
+                                    if target.custom {
+                                        ui.label(
+                                            egui::RichText::new("custom")
+                                                .weak()
+                                                .small(),
+                                        );
+                                        if ui.small_button("✕").clicked() {
+                                            remove_idx = Some(i);
+                                        }
+                                    }
+                                });
+                                ui.label(
+                                    egui::RichText::new(&target.description)
+                                        .weak()
+                                        .small(),
+                                );
+                                ui.label(
+                                    egui::RichText::new(
+                                        target.path.display().to_string(),
+                                    )
+                                    .monospace()
+                                    .small()
+                                    .weak(),
+                                );
+                            });
                         });
-                        ui.label(
-                            egui::RichText::new(&target.description).weak().small(),
-                        );
-                        ui.label(
-                            egui::RichText::new(target.path.display().to_string())
-                                .monospace()
-                                .small()
-                                .weak(),
-                        );
-                    });
-                });
-                ui.separator();
-            }
-            if let Some(i) = remove_idx {
-                let removed = self.system.targets.remove(i);
-                // Compare as paths, not display strings — PathBuf normalizes
-                // things like a trailing backslash that the raw String keeps.
-                self.settings
-                    .custom_targets
-                    .retain(|c| PathBuf::from(&c.path) != removed.path);
-                self.settings.save();
-                self.add_log(&format!("Removed custom target: {}", removed.name));
-            }
-            for (name, enabled) in toggled {
-                if enabled {
-                    self.settings.disabled_targets.retain(|n| n != &name);
-                } else if !self.settings.disabled_targets.contains(&name) {
-                    self.settings.disabled_targets.push(name);
-                }
-                self.settings.save();
-            }
-
-            ui.collapsing("Add a custom target", |ui| {
-                ui.horizontal(|ui| {
-                    ui.label("Name");
-                    ui.text_edit_singleline(&mut self.new_target_name);
-                });
-                dir_picker(ui, &mut self.new_target_path);
-                let ok = !self.new_target_name.trim().is_empty()
-                    && !self.new_target_path.trim().is_empty();
-                if ui
-                    .add_enabled(ok, egui::Button::new("Add target"))
-                    .clicked()
-                {
-                    self.add_custom_target();
-                }
-            });
-
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                if primary_button(ui, !busy, "Scan system").clicked() {
-                    self.start_system_scan();
-                }
-                let n = self.system.matched_files.len();
-                if danger_button(ui, !busy && n > 0, format!("Clean {} files", n))
-                    .clicked()
-                {
-                    if self.settings.confirm_clean {
-                        self.confirm_title = "Clean system files?".to_string();
-                        self.confirm_body = format!(
-                            "Delete the {} matched system files ({})?",
-                            n,
-                            helpers::human_size(self.system.total_matched_size)
-                        );
-                        self.confirm_action = Some(ConfirmAction::CleanFiles(self.tab));
-                    } else {
-                        self.start_clean_selected(self.tab);
+                        ui.separator();
                     }
-                }
-            });
-        });
+                    if let Some(i) = remove_idx {
+                        let removed = s.system.targets.remove(i);
+                        // Compare as paths, not display strings — PathBuf
+                        // normalizes things like a trailing backslash that the
+                        // raw String keeps.
+                        s.settings
+                            .custom_targets
+                            .retain(|c| PathBuf::from(&c.path) != removed.path);
+                        s.settings.save();
+                        s.add_log(&format!("Removed custom target: {}", removed.name));
+                    }
+                    for (name, enabled) in toggled {
+                        if enabled {
+                            s.settings.disabled_targets.retain(|n| n != &name);
+                        } else if !s.settings.disabled_targets.contains(&name) {
+                            s.settings.disabled_targets.push(name);
+                        }
+                        s.settings.save();
+                    }
 
-        ui.add_space(10.0);
-
-        card(ui, "Results", |ui| {
-            ui.label(format!(
-                "Matched {} files · {}",
-                self.system.matched_files.len(),
-                helpers::human_size(self.system.total_matched_size)
-            ));
-            ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Filter:").weak().small());
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.system.filter)
-                        .hint_text("type to filter results")
-                        .desired_width(220.0),
-                );
-                if !self.system.filter.is_empty() && ui.small_button("Clear").clicked() {
-                    self.system.filter.clear();
-                }
-                ui.separator();
-                ui.label(egui::RichText::new("Sort:").weak().small());
-                egui::ComboBox::from_id_source("system_sort")
-                    .selected_text(self.system.sort.label())
-                    .show_ui(ui, |ui| {
-                        for s in SortMode::all() {
-                            ui.selectable_value(&mut self.system.sort, *s, s.label());
+                    ui.collapsing("Add a custom target", |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("Name");
+                            ui.text_edit_singleline(&mut s.new_target_name);
+                        });
+                        dir_picker(ui, &mut s.new_target_path);
+                        let ok = !s.new_target_name.trim().is_empty()
+                            && !s.new_target_path.trim().is_empty();
+                        if ui
+                            .add_enabled(ok, egui::Button::new("Add target"))
+                            .clicked()
+                        {
+                            s.add_custom_target();
                         }
                     });
-            });
-            ui.add_space(4.0);
 
-            let filter = self.system.filter.to_lowercase();
-            let sort = self.system.sort;
-            let mut view: Vec<(&MatchedFile, String)> = self
-                .system
-                .matched_files
-                .iter()
-                .filter(|f| {
-                    filter.is_empty()
-                        || f.path
-                            .to_string_lossy()
-                            .to_lowercase()
-                            .contains(&filter)
-                })
-                .map(|f| (f, name_key(&f.path)))
-                .collect();
-            view.sort_by(|a, b| {
-                sort.compare((a.0.size, a.1.as_str()), (b.0.size, b.1.as_str()))
-            });
-            let refs: Vec<&MatchedFile> = view.iter().map(|(f, _)| *f).collect();
-            matched_file_rows(ui, &refs, "system_scroll");
-        });
+                    ui.add_space(10.0);
+                    if primary_button_fill(ui, !s.busy(), "Scan system").clicked() {
+                        s.start_system_scan();
+                    }
+                });
+            },
+            |s, ui| {
+                let busy = s.busy();
+                card(ui, "Results", |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        stat_chip(
+                            ui,
+                            format!("{}", s.system.matched_files.len()),
+                            "files matched",
+                        );
+                        stat_chip(
+                            ui,
+                            helpers::human_size(s.system.total_matched_size),
+                            "to clean",
+                        );
+                        stat_chip(
+                            ui,
+                            format!(
+                                "{}",
+                                s.system.targets.iter().filter(|t| t.enabled).count()
+                            ),
+                            "targets on",
+                        );
+                    });
+                    ui.add_space(6.0);
+
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Filter:").weak().small());
+                        ui.add(
+                            egui::TextEdit::singleline(&mut s.system.filter)
+                                .hint_text("type to filter results")
+                                .desired_width(180.0),
+                        );
+                        if !s.system.filter.is_empty() && ui.small_button("Clear").clicked()
+                        {
+                            s.system.filter.clear();
+                        }
+                        ui.separator();
+                        ui.label(egui::RichText::new("Sort:").weak().small());
+                        egui::ComboBox::from_id_source("system_sort")
+                            .selected_text(s.system.sort.label())
+                            .show_ui(ui, |ui| {
+                                for sm in SortMode::all() {
+                                    ui.selectable_value(&mut s.system.sort, *sm, sm.label());
+                                }
+                            });
+                    });
+                    ui.add_space(4.0);
+
+                    let filter = s.system.filter.to_lowercase();
+                    let sort = s.system.sort;
+                    let mut view: Vec<(&MatchedFile, String)> = s
+                        .system
+                        .matched_files
+                        .iter()
+                        .filter(|f| {
+                            filter.is_empty()
+                                || f.path
+                                    .to_string_lossy()
+                                    .to_lowercase()
+                                    .contains(&filter)
+                        })
+                        .map(|f| (f, name_key(&f.path)))
+                        .collect();
+                    view.sort_by(|a, b| {
+                        sort.compare((a.0.size, a.1.as_str()), (b.0.size, b.1.as_str()))
+                    });
+                    let refs: Vec<&MatchedFile> = view.iter().map(|(f, _)| *f).collect();
+                    let list_h = Self::list_area_h(ui);
+                    ui.allocate_ui(egui::vec2(ui.available_width(), list_h), |ui| {
+                        matched_file_rows(ui, &refs, "system_scroll");
+                    });
+
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        if ui
+                            .add_enabled(
+                                !s.system.matched_files.is_empty(),
+                                egui::Button::new("Export report"),
+                            )
+                            .clicked()
+                        {
+                            match helpers::export_report(&s.system.matched_files, "system")
+                            {
+                                Ok(p) => {
+                                    s.status =
+                                        format!("Report saved: {}", p.display());
+                                    s.status_toast = 60;
+                                }
+                                Err(e) => {
+                                    s.status = format!("Export error: {}", e);
+                                    s.status_toast = 60;
+                                }
+                            }
+                        }
+                        ui.with_layout(
+                            egui::Layout::right_to_left(egui::Align::Center),
+                            |ui| {
+                                let n = s.system.matched_files.len();
+                                if danger_button(
+                                    ui,
+                                    !busy && n > 0,
+                                    format!("Clean {} files", n),
+                                )
+                                .clicked()
+                                {
+                                    if s.settings.confirm_clean {
+                                        s.confirm_title =
+                                            "Clean system files?".to_string();
+                                        s.confirm_body = format!(
+                                            "Delete the {} matched system files ({})?",
+                                            n,
+                                            helpers::human_size(
+                                                s.system.total_matched_size
+                                            )
+                                        );
+                                        s.confirm_action =
+                                            Some(ConfirmAction::CleanFiles(s.tab));
+                                    } else {
+                                        s.start_clean_selected(s.tab);
+                                    }
+                                }
+                            },
+                        );
+                    });
+                });
+            },
+        );
     }
 
     fn draw_empty_folders(&mut self, ui: &mut egui::Ui) {
-        let busy = self.busy();
+        self.scan_page(
+            ui,
+            "empty",
+            |s, ui| {
+                card(ui, "Scan setup", |ui| {
+                    dir_picker(ui, &mut s.empty_folders.dir_path);
+                    ui.add_space(6.0);
+                    ui.label(
+                        egui::RichText::new(
+                            "Cascade-aware: folders that become empty after their children are removed are included.",
+                        )
+                        .weak()
+                        .small(),
+                    );
 
-        card(ui, "Scan setup", |ui| {
-            dir_picker(ui, &mut self.empty_folders.dir_path);
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                if primary_button(ui, !busy, "Scan for empty folders").clicked() {
-                    self.start_empty_folders_scan();
-                }
-                let n = self.empty_folders.folders.len();
-                if danger_button(ui, !busy && n > 0, format!("Remove {} folders", n))
-                    .clicked()
-                {
-                    if self.settings.confirm_clean {
-                        self.confirm_title = "Remove empty folders?".to_string();
-                        self.confirm_body = format!(
-                            "Remove {} empty folders (including cascades)?",
-                            n
-                        );
-                        self.confirm_action = Some(ConfirmAction::CleanEmptyFolders);
-                    } else {
-                        self.start_clean_empty_folders();
-                    }
-                }
-                if ui
-                    .add_enabled(
-                        !self.empty_folders.folders.is_empty(),
-                        egui::Button::new("Export report"),
-                    )
-                    .clicked()
-                {
-                    match helpers::export_path_report(
-                        &self.empty_folders.folders,
-                        "empty_folders",
-                    ) {
-                        Ok(p) => {
-                            self.status = format!("Report saved: {}", p.display());
-                            self.status_toast = 60;
-                        }
-                        Err(e) => {
-                            self.status = format!("Export error: {}", e);
-                            self.status_toast = 60;
-                        }
-                    }
-                }
-            });
-            ui.label(
-                egui::RichText::new(
-                    "Cascade-aware: folders that become empty after their children are removed are included.",
-                )
-                .weak()
-                .small(),
-            );
-        });
-
-        ui.add_space(10.0);
-
-        card(ui, "Results", |ui| {
-            ui.label(format!(
-                "Found {} empty folders",
-                self.empty_folders.folders.len()
-            ));
-            ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Filter:").weak().small());
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.empty_folders.filter)
-                        .hint_text("type to filter results")
-                        .desired_width(220.0),
-                );
-                if !self.empty_folders.filter.is_empty()
-                    && ui.small_button("Clear").clicked()
-                {
-                    self.empty_folders.filter.clear();
-                }
-            });
-            ui.add_space(4.0);
-            if self.empty_folders.folders.is_empty() {
-                egui::ScrollArea::vertical()
-                    .id_source("empty_folders_scroll")
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        empty_state(ui, "No empty folders found yet — run a scan.")
-                    });
-                return;
-            }
-            let flt = self.empty_folders.filter.to_lowercase();
-            let view: Vec<&PathBuf> = self
-                .empty_folders
-                .folders
-                .iter()
-                .filter(|f| {
-                    flt.is_empty()
-                        || f.to_string_lossy().to_lowercase().contains(&flt)
-                })
-                .collect();
-            let row_h = ui.text_style_height(&egui::TextStyle::Monospace) + 8.0;
-            egui::ScrollArea::vertical()
-                .id_source("empty_folders_scroll")
-                .auto_shrink([false, false])
-                .show_rows(ui, row_h, view.len(), |ui, range| {
-                    for f in &view[range] {
-                        let resp = ui.monospace(f.display().to_string());
-                        file_row_menu(&resp, f);
+                    ui.add_space(10.0);
+                    if primary_button_fill(ui, !s.busy(), "Scan for empty folders")
+                        .clicked()
+                    {
+                        s.start_empty_folders_scan();
                     }
                 });
-        });
+            },
+            |s, ui| {
+                let busy = s.busy();
+                card(ui, "Results", |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        stat_chip(
+                            ui,
+                            format!("{}", s.empty_folders.folders.len()),
+                            "empty folders",
+                        );
+                    });
+                    ui.add_space(6.0);
+
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Filter:").weak().small());
+                        ui.add(
+                            egui::TextEdit::singleline(&mut s.empty_folders.filter)
+                                .hint_text("type to filter results")
+                                .desired_width(180.0),
+                        );
+                        if !s.empty_folders.filter.is_empty()
+                            && ui.small_button("Clear").clicked()
+                        {
+                            s.empty_folders.filter.clear();
+                        }
+                    });
+                    ui.add_space(4.0);
+
+                    let flt = s.empty_folders.filter.to_lowercase();
+                    let list_h = Self::list_area_h(ui);
+                    ui.allocate_ui(egui::vec2(ui.available_width(), list_h), |ui| {
+                        if s.empty_folders.folders.is_empty() {
+                            egui::ScrollArea::vertical()
+                                .id_source("empty_folders_scroll")
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| {
+                                    empty_state(
+                                        ui,
+                                        "No empty folders found yet — run a scan.",
+                                    )
+                                });
+                            return;
+                        }
+                        let view: Vec<&PathBuf> = s
+                            .empty_folders
+                            .folders
+                            .iter()
+                            .filter(|f| {
+                                flt.is_empty()
+                                    || f.to_string_lossy()
+                                        .to_lowercase()
+                                        .contains(&flt)
+                            })
+                            .collect();
+                        let row_h =
+                            ui.text_style_height(&egui::TextStyle::Monospace) + 8.0;
+                        egui::ScrollArea::vertical()
+                            .id_source("empty_folders_scroll")
+                            .auto_shrink([false, false])
+                            .show_rows(ui, row_h, view.len(), |ui, range| {
+                                for f in &view[range] {
+                                    let resp =
+                                        ui.monospace(f.display().to_string());
+                                    file_row_menu(&resp, f);
+                                }
+                            });
+                    });
+
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        if ui
+                            .add_enabled(
+                                !s.empty_folders.folders.is_empty(),
+                                egui::Button::new("Export report"),
+                            )
+                            .clicked()
+                        {
+                            match helpers::export_path_report(
+                                &s.empty_folders.folders,
+                                "empty_folders",
+                            ) {
+                                Ok(p) => {
+                                    s.status =
+                                        format!("Report saved: {}", p.display());
+                                    s.status_toast = 60;
+                                }
+                                Err(e) => {
+                                    s.status = format!("Export error: {}", e);
+                                    s.status_toast = 60;
+                                }
+                            }
+                        }
+                        ui.with_layout(
+                            egui::Layout::right_to_left(egui::Align::Center),
+                            |ui| {
+                                let n = s.empty_folders.folders.len();
+                                if danger_button(
+                                    ui,
+                                    !busy && n > 0,
+                                    format!("Remove {} folders", n),
+                                )
+                                .clicked()
+                                {
+                                    if s.settings.confirm_clean {
+                                        s.confirm_title =
+                                            "Remove empty folders?".to_string();
+                                        s.confirm_body = format!(
+                                            "Remove {} empty folders (including cascades)?",
+                                            n
+                                        );
+                                        s.confirm_action =
+                                            Some(ConfirmAction::CleanEmptyFolders);
+                                    } else {
+                                        s.start_clean_empty_folders();
+                                    }
+                                }
+                            },
+                        );
+                    });
+                });
+            },
+        );
     }
 
     fn draw_folder_sizes(&mut self, ui: &mut egui::Ui) {
-        let busy = self.busy();
+        self.scan_page(
+            ui,
+            "sizes",
+            |s, ui| {
+                card(ui, "Scan setup", |ui| {
+                    dir_picker(ui, &mut s.folder_sizes.dir_path);
+                    ui.add_space(6.0);
+                    ui.label(
+                        egui::RichText::new(
+                            "Totals up each top-level subfolder so you can see what's taking the space.",
+                        )
+                        .weak()
+                        .small(),
+                    );
 
-        card(ui, "Scan setup", |ui| {
-            dir_picker(ui, &mut self.folder_sizes.dir_path);
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                if primary_button(ui, !busy, "Analyze").clicked() {
-                    self.start_folder_sizes_scan();
-                }
-            });
-            ui.label(
-                egui::RichText::new(
-                    "Totals up each top-level subfolder so you can see what's taking the space.",
-                )
-                .weak()
-                .small(),
-            );
-        });
-
-        ui.add_space(10.0);
-
-        card(ui, "Results", |ui| {
-            if self.folder_sizes.entries.is_empty() {
-                empty_state(ui, "No breakdown yet — run an analysis.");
-                return;
-            }
-            ui.label(format!(
-                "{} across {} top-level entries",
-                helpers::human_size(self.folder_sizes.total),
-                self.folder_sizes.entries.len()
-            ));
-            ui.add_space(6.0);
-            let max = self
-                .folder_sizes
-                .entries
-                .first()
-                .map(|e| e.size)
-                .unwrap_or(1)
-                .max(1);
-            let total = self.folder_sizes.total.max(1);
-            egui::ScrollArea::vertical()
-                .id_source("folder_sizes_scroll")
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    for e in &self.folder_sizes.entries {
-                        let share = e.size as f32 / max as f32;
-                        let pct = e.size as f64 / total as f64 * 100.0;
-                        let resp = ui.add(
-                            egui::ProgressBar::new(share)
-                                .fill(accent(ui))
-                                .text(format!(
-                                    "{} — {} ({:.0}%)",
-                                    e.name,
-                                    helpers::human_size(e.size),
-                                    pct
-                                )),
-                        );
-                        // Double-click / right-click to reveal the folder.
-                        resp.clone()
-                            .on_hover_text("Double-click to open in Explorer")
-                            .context_menu(|ui| {
-                                if ui.button("Reveal in Explorer").clicked() {
-                                    reveal_in_explorer(&e.path);
-                                    ui.close_menu();
-                                }
-                                if ui.button("Copy path").clicked() {
-                                    ui.ctx().output_mut(|o| {
-                                        o.copied_text = e.path.display().to_string();
-                                    });
-                                    ui.close_menu();
-                                }
-                            });
-                        if resp.double_clicked() {
-                            reveal_in_explorer(&e.path);
-                        }
-                        ui.add_space(2.0);
+                    ui.add_space(10.0);
+                    if primary_button_fill(ui, !s.busy(), "Analyze").clicked() {
+                        s.start_folder_sizes_scan();
                     }
                 });
-        });
+            },
+            |s, ui| {
+                card(ui, "Results", |ui| {
+                    if s.folder_sizes.entries.is_empty() {
+                        let list_h = Self::list_area_h(ui);
+                        ui.allocate_ui(
+                            egui::vec2(ui.available_width(), list_h),
+                            |ui| {
+                                egui::ScrollArea::vertical()
+                                    .id_source("folder_sizes_scroll")
+                                    .auto_shrink([false, false])
+                                    .show(ui, |ui| {
+                                        empty_state(
+                                            ui,
+                                            "No breakdown yet — run an analysis.",
+                                        )
+                                    });
+                            },
+                        );
+                        return;
+                    }
+                    ui.horizontal_wrapped(|ui| {
+                        stat_chip(
+                            ui,
+                            helpers::human_size(s.folder_sizes.total),
+                            "total",
+                        );
+                        stat_chip(
+                            ui,
+                            format!("{}", s.folder_sizes.entries.len()),
+                            "top-level entries",
+                        );
+                    });
+                    ui.add_space(6.0);
+                    let max = s
+                        .folder_sizes
+                        .entries
+                        .first()
+                        .map(|e| e.size)
+                        .unwrap_or(1)
+                        .max(1);
+                    let total = s.folder_sizes.total.max(1);
+                    let list_h = Self::list_area_h(ui);
+                    ui.allocate_ui(egui::vec2(ui.available_width(), list_h), |ui| {
+                        egui::ScrollArea::vertical()
+                            .id_source("folder_sizes_scroll")
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                for e in &s.folder_sizes.entries {
+                                    let share = e.size as f32 / max as f32;
+                                    let pct = e.size as f64 / total as f64 * 100.0;
+                                    let resp = ui.add(
+                                        egui::ProgressBar::new(share)
+                                            .fill(accent(ui))
+                                            .text(format!(
+                                                "{} — {} ({:.0}%)",
+                                                e.name,
+                                                helpers::human_size(e.size),
+                                                pct
+                                            )),
+                                    );
+                                    // Double-click / right-click to reveal the folder.
+                                    resp.clone()
+                                        .on_hover_text(
+                                            "Double-click to open in Explorer",
+                                        )
+                                        .context_menu(|ui| {
+                                            if ui
+                                                .button("Reveal in Explorer")
+                                                .clicked()
+                                            {
+                                                reveal_in_explorer(&e.path);
+                                                ui.close_menu();
+                                            }
+                                            if ui.button("Copy path").clicked() {
+                                                ui.ctx().output_mut(|o| {
+                                                    o.copied_text =
+                                                        e.path.display().to_string();
+                                                });
+                                                ui.close_menu();
+                                            }
+                                        });
+                                    if resp.double_clicked() {
+                                        reveal_in_explorer(&e.path);
+                                    }
+                                    ui.add_space(2.0);
+                                }
+                            });
+                    });
+                });
+            },
+        );
     }
 
     fn draw_storage(&mut self, ui: &mut egui::Ui) {
@@ -3358,7 +3802,18 @@ impl CleanerApp {
             return;
         }
 
-        for disk in &self.storage_disks {
+        // Summary chips — total capacity and free space across all drives.
+        let total: u64 = self.storage_disks.iter().map(|d| d.total).sum();
+        let free: u64 = self.storage_disks.iter().map(|d| d.available).sum();
+        ui.horizontal_wrapped(|ui| {
+            stat_chip(ui, format!("{}", self.storage_disks.len()), "drives");
+            stat_chip(ui, helpers::human_size(total), "total");
+            stat_chip(ui, helpers::human_size(free), "free");
+        });
+        ui.add_space(8.0);
+
+        let wide = ui.available_width() > 760.0;
+        let draw_disk = |disk: &DiskEntry, ui: &mut egui::Ui| {
             let used = disk.total.saturating_sub(disk.available);
             let percent = if disk.total > 0 {
                 (used as f64 / disk.total as f64) * 100.0
@@ -3404,7 +3859,22 @@ impl CleanerApp {
                         .text(format!("{:.0}% full", percent)),
                 );
             });
-            ui.add_space(8.0);
+        };
+
+        if wide {
+            for pair in self.storage_disks.chunks(2) {
+                ui.columns(2, |cols| {
+                    for (i, disk) in pair.iter().enumerate() {
+                        draw_disk(disk, &mut cols[i]);
+                    }
+                });
+                ui.add_space(8.0);
+            }
+        } else {
+            for disk in &self.storage_disks {
+                draw_disk(disk, ui);
+                ui.add_space(8.0);
+            }
         }
 
         ui.label(
@@ -3927,32 +4397,45 @@ impl eframe::App for CleanerApp {
                     {
                         self.hide_to_tray(ctx);
                     }
-                    ui.label("Theme:");
-                    let mut new_theme: Option<themes::Theme> = None;
-                    egui::ComboBox::from_id_source("theme_combo")
-                        .selected_text(self.settings.theme.label())
-                        .show_ui(ui, |ui| {
-                            for t in themes::Theme::all() {
-                                if ui
-                                    .selectable_label(
-                                        *t == self.settings.theme,
-                                        t.label(),
-                                    )
-                                    .clicked()
-                                {
-                                    new_theme = Some(*t);
-                                }
-                            }
-                        });
-                    if let Some(t) = new_theme {
-                        self.pending_theme_change = Some(t);
-                    }
+                    // right_to_left order: this renders right after the combo,
+                    // giving "Theme: [picker] [Customize]".
                     if ui
                         .button("Customize")
                         .on_hover_text("Accent colors and UI scale")
                         .clicked()
                     {
                         self.customize_open = true;
+                    }
+                    let mut new_theme: Option<themes::Theme> = None;
+                    // ComboBox drifts vertically inside a right_to_left row
+                    // (egui #7412/#4165) — give it its own centered child UI
+                    // so it stays level with the buttons.
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(120.0, 28.0),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| {
+                            egui::ComboBox::from_id_source("theme_combo")
+                                .selected_text(self.settings.theme.label())
+                                .show_ui(ui, |ui| {
+                                    for t in themes::Theme::all() {
+                                        if ui
+                                            .selectable_label(
+                                                *t == self.settings.theme,
+                                                t.label(),
+                                            )
+                                            .clicked()
+                                        {
+                                            new_theme = Some(*t);
+                                        }
+                                    }
+                                });
+                        },
+                    );
+                    // right_to_left: added after the combo so it renders to
+                    // its left ("Theme: [Dark ▾]").
+                    ui.label("Theme:");
+                    if let Some(t) = new_theme {
+                        self.pending_theme_change = Some(t);
                     }
                 });
             });

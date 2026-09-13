@@ -14,6 +14,34 @@ Things planned for the next release. Nothing here is final yet.
 
 ---
 
+## [2.12.1] — 2026-09-13
+
+Layout overhaul for every scan tab, plus a header alignment fix.
+
+### Improved
+- **Two-column scan pages** — every cleaning tool now uses the same
+  arrangement the pro tools do: a fixed-width setup column on the left
+  (folder picker, options, full-width scan button) and a results card
+  filling the rest. Falls back to a single scrollable column on narrow
+  windows.
+- **Result cards got a proper structure** — stat chips up top (files
+  matched, reclaimable size, selection count), a filter/sort toolbar,
+  the virtualized list filling the available height, and a footer action
+  bar pinned to the bottom with Export on the left and the destructive
+  action on the right.
+- **Storage tab** — summary chips (drives / total / free) and a
+  two-column drive grid on wide windows.
+- **System Cleaner** gained an Export report button, matching the other
+  tabs.
+
+### Fixed
+- The theme dropdown in the header sat a few pixels low and its label
+  rendered on the wrong side — the ComboBox now gets a centered child
+  layout (works around egui's right-to-left row drift) and reads
+  "Theme: [Dark ▾] [Customize]".
+
+---
+
 ## [2.12.0] — 2026-09-13
 
 UI polish round — a proper release-notes viewer, theme customization,
