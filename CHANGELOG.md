@@ -14,6 +14,26 @@ Things planned for the next release. Nothing here is final yet.
 
 ---
 
+## [2.9.9] — 2026-09-13
+
+Seventh audit pass — filled a feature gap the changelog had claimed since
+2.4.0, plus one more virtualized list.
+
+### Fixed
+- **Duplicates and Empty Folders now have Export report buttons** — the
+  2.4.0 changelog advertised export on all four result tabs, but only
+  Custom Clean and Large Files had it. Duplicate groups export as
+  file+size rows; empty folders use a new path-only report format.
+- The Empty Folders results list is virtualized (`show_rows`) like the
+  other result lists — thousands of empty folders no longer cost a layout
+  pass per row per frame.
+
+### Tests
+- New unit tests for `path_key` normalization, prepped exclusion lists,
+  and `human_size`/`parse_human_size` round-tripping (13 total).
+
+---
+
 ## [2.9.8] — 2026-09-13
 
 Sixth audit pass — a real hot-path fix for history logging, secure-delete

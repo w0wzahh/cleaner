@@ -2369,6 +2369,35 @@ impl CleanerApp {
                         self.start_clean_duplicates();
                     }
                 }
+                if ui
+                    .add_enabled(
+                        !self.duplicates.groups.is_empty(),
+                        egui::Button::new("Export report"),
+                    )
+                    .clicked()
+                {
+                    let files: Vec<MatchedFile> = self
+                        .duplicates
+                        .groups
+                        .iter()
+                        .flat_map(|g| {
+                            g.files.iter().map(|p| MatchedFile {
+                                path: p.clone(),
+                                size: g.size,
+                            })
+                        })
+                        .collect();
+                    match helpers::export_report(&files, "duplicates") {
+                        Ok(p) => {
+                            self.status = format!("Report saved: {}", p.display());
+                            self.status_toast = 60;
+                        }
+                        Err(e) => {
+                            self.status = format!("Export error: {}", e);
+                            self.status_toast = 60;
+                        }
+                    }
+                }
             });
             ui.label(
                 egui::RichText::new(
@@ -2830,6 +2859,27 @@ impl CleanerApp {
                         self.start_clean_empty_folders();
                     }
                 }
+                if ui
+                    .add_enabled(
+                        !self.empty_folders.folders.is_empty(),
+                        egui::Button::new("Export report"),
+                    )
+                    .clicked()
+                {
+                    match helpers::export_path_report(
+                        &self.empty_folders.folders,
+                        "empty_folders",
+                    ) {
+                        Ok(p) => {
+                            self.status = format!("Report saved: {}", p.display());
+                            self.status_toast = 60;
+                        }
+                        Err(e) => {
+                            self.status = format!("Export error: {}", e);
+                            self.status_toast = 60;
+                        }
+                    }
+                }
             });
             ui.label(
                 egui::RichText::new(
@@ -2848,15 +2898,21 @@ impl CleanerApp {
                 self.empty_folders.folders.len()
             ));
             ui.add_space(4.0);
+            if self.empty_folders.folders.is_empty() {
+                egui::ScrollArea::vertical()
+                    .id_source("empty_folders_scroll")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        empty_state(ui, "No empty folders found yet — run a scan.")
+                    });
+                return;
+            }
+            let row_h = ui.text_style_height(&egui::TextStyle::Monospace) + 8.0;
             egui::ScrollArea::vertical()
                 .id_source("empty_folders_scroll")
                 .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    if self.empty_folders.folders.is_empty() {
-                        empty_state(ui, "No empty folders found yet — run a scan.");
-                        return;
-                    }
-                    for f in &self.empty_folders.folders {
+                .show_rows(ui, row_h, self.empty_folders.folders.len(), |ui, range| {
+                    for f in &self.empty_folders.folders[range] {
                         ui.monospace(f.display().to_string());
                     }
                 });

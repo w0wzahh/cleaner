@@ -11,6 +11,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.9] - 2026-09-13
+### Fixed
+- Seventh audit pass. Duplicates and Empty Folders finally have the
+  Export report button the changelog always claimed they had — folder
+  reports use a new path-only export format; the empty-folders results
+  list is virtualized like the other result lists.
+
 ## [2.9.8] - 2026-09-13
 ### Fixed
 - Sixth audit pass. History-log writes are now batched — add_log used to

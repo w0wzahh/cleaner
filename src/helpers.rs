@@ -409,6 +409,24 @@ pub fn export_report(files: &[MatchedFile], label: &str) -> Result<PathBuf, Stri
     Ok(path)
 }
 
+/// Same export but for path-only results — empty folders have no size.
+pub fn export_path_report(paths: &[PathBuf], label: &str) -> Result<PathBuf, String> {
+    let timestamp = Local::now().format("%Y%m%d_%H%M%S_%3f");
+    let filename = format!("cleaner_report_{}_{}.txt", label, timestamp);
+    let mut content = String::new();
+    content.push_str("Cleaner Report\n");
+    content.push_str("==============\n");
+    content.push_str(&format!("Generated: {}\n", Local::now().format("%Y-%m-%d %H:%M:%S")));
+    content.push_str(&format!("Type: {}\n", label));
+    content.push_str(&format!("Total items: {}\n\n", paths.len()));
+    for p in paths {
+        content.push_str(&format!("  {}\n", p.display()));
+    }
+    let path = crate::settings::reports_dir().join(&filename);
+    fs::write(&path, content).map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
 /// Parse strings produced by `human_size` back into bytes.
 /// Only supports the exact formats emitted by this crate.
 pub fn parse_human_size(s: &str) -> Option<u64> {

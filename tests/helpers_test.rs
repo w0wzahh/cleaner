@@ -1,5 +1,8 @@
-use cleaner::helpers::{is_excluded, is_hidden, matches_glob};
-use std::path::PathBuf;
+use cleaner::helpers::{
+    human_size, is_excluded, is_excluded_prepped, is_hidden, matches_glob,
+    parse_human_size, path_key, prep_excludes,
+};
+use std::path::{Path, PathBuf};
 
 #[test]
 fn excluded_is_case_insensitive() {
@@ -62,6 +65,32 @@ fn glob_invalid_pattern_matches_nothing() {
 fn glob_path_pattern_matches_full_path() {
     let p = PathBuf::from("C:\\data\\logs\\app.log");
     assert!(matches_glob(&p, "*\\logs\\*"));
+}
+
+#[test]
+fn path_key_normalizes_spellings() {
+    assert_eq!(path_key(Path::new("C:\\Foo\\")), "c:\\foo");
+    assert_eq!(path_key(Path::new("c:/Foo")), "c:\\foo");
+    assert_eq!(path_key(Path::new("\\\\?\\C:\\Foo")), "c:\\foo");
+    // Drive root keeps its trailing separator.
+    assert_eq!(path_key(Path::new("C:\\")), "c:\\");
+}
+
+#[test]
+fn prepped_excludes_match_and_dedupe_empty() {
+    let prepped = prep_excludes(&["C:\\Keep".to_string(), "  ".to_string()]);
+    assert_eq!(prepped.len(), 1);
+    assert!(is_excluded_prepped(Path::new("c:\\keep\\f.tmp"), &prepped));
+    assert!(!is_excluded_prepped(Path::new("c:\\keep2\\f.tmp"), &prepped));
+}
+
+#[test]
+fn human_size_roundtrips_round_values() {
+    for n in [0u64, 512, 1024, 5 * 1024 * 1024, 3 * 1024 * 1024 * 1024] {
+        let s = human_size(n);
+        assert_eq!(parse_human_size(&s), Some(n), "roundtrip failed for {}", s);
+    }
+    assert_eq!(parse_human_size("not a size"), None);
 }
 
 #[test]

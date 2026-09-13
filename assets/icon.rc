@@ -18,12 +18,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "Cleaner"
             VALUE "FileDescription", "Cleaner - lightweight system cleanup utility"
-            VALUE "FileVersion", "2.9.8.0"
+            VALUE "FileVersion", "2.9.9.0"
             VALUE "InternalName", "cleaner"
             VALUE "LegalCopyright", "MIT License"
             VALUE "OriginalFilename", "cleaner.exe"
             VALUE "ProductName", "Cleaner"
-            VALUE "ProductVersion", "2.9.8.0"
+            VALUE "ProductVersion", "2.9.9.0"
         END
     END
     BLOCK "VarFileInfo"
