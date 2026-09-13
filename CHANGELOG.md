@@ -14,6 +14,20 @@ Things planned for the next release. Nothing here is final yet.
 
 ---
 
+## [2.12.2] — 2026-09-13
+
+A follow-up fix for the theme picker in the header.
+
+### Fixed
+
+- **Theme dropdown vertical alignment** — the previous ComboBox still sat a few
+  pixels below the neighboring buttons. It's now a regular button with a
+  painted arrow and a popup menu underneath (the same API ComboBox uses
+  internally), so it shares the exact widget path as the other header buttons —
+  identical height, perfectly level.
+
+---
+
 ## [2.12.1] — 2026-09-13
 
 Layout overhaul for every scan tab, plus a header alignment fix.

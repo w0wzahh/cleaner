@@ -4408,29 +4408,49 @@ impl eframe::App for CleanerApp {
                     }
                     let mut new_theme: Option<themes::Theme> = None;
                     // ComboBox drifts vertically inside a right_to_left row
-                    // (egui #7412/#4165) — give it its own centered child UI
-                    // so it stays level with the buttons.
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(120.0, 28.0),
-                        egui::Layout::left_to_right(egui::Align::Center),
-                        |ui| {
-                            egui::ComboBox::from_id_source("theme_combo")
-                                .selected_text(self.settings.theme.label())
-                                .show_ui(ui, |ui| {
-                                    for t in themes::Theme::all() {
-                                        if ui
-                                            .selectable_label(
-                                                *t == self.settings.theme,
-                                                t.label(),
-                                            )
-                                            .clicked()
-                                        {
-                                            new_theme = Some(*t);
-                                        }
-                                    }
-                                });
-                        },
+                    // (egui #7412/#4165). Use a plain Button + popup instead —
+                    // identical widget path as the neighboring buttons, so
+                    // identical height and alignment.
+                    let popup_id = ui.make_persistent_id("theme_combo");
+                    let theme_btn = ui.add(
+                        egui::Button::new(self.settings.theme.label())
+                            .min_size(egui::vec2(ui.spacing().combo_width, 0.0)),
                     );
+                    // ComboBox-style arrow glyph — painted, since egui's
+                    // embedded fonts lack a ▾/▼ glyph.
+                    let icon_w = ui.spacing().icon_width;
+                    let arrow_c = egui::pos2(
+                        theme_btn.rect.right()
+                            - ui.spacing().button_padding.x
+                            - icon_w * 0.5,
+                        theme_btn.rect.center().y,
+                    );
+                    let arrow_color =
+                        ui.style().interact(&theme_btn).fg_stroke.color;
+                    let s = icon_w * 0.35;
+                    ui.painter().add(egui::Shape::convex_polygon(
+                        vec![
+                            arrow_c + egui::vec2(-s, -s * 0.6),
+                            arrow_c + egui::vec2(s, -s * 0.6),
+                            arrow_c + egui::vec2(0.0, s * 0.6),
+                        ],
+                        arrow_color,
+                        egui::Stroke::NONE,
+                    ));
+                    if theme_btn.clicked() {
+                        ui.memory_mut(|m| m.toggle_popup(popup_id));
+                    }
+                    egui::popup::popup_below_widget(ui, popup_id, &theme_btn, |ui| {
+                        for t in themes::Theme::all() {
+                            if ui
+                                .selectable_label(*t == self.settings.theme, t.label())
+                                .clicked()
+                            {
+                                new_theme = Some(*t);
+                                ui.memory_mut(|m| m.close_popup());
+                            }
+                        }
+                    });
                     // right_to_left: added after the combo so it renders to
                     // its left ("Theme: [Dark ▾]").
                     ui.label("Theme:");
