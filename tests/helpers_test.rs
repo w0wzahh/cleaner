@@ -2,6 +2,7 @@ use cleaner::helpers::{
     human_size, is_excluded, is_excluded_prepped, is_hidden, matches_glob,
     parse_human_size, path_key, prep_excludes,
 };
+use cleaner::models::parse_releases;
 use std::path::{Path, PathBuf};
 
 #[test]
@@ -91,6 +92,33 @@ fn human_size_roundtrips_round_values() {
         assert_eq!(parse_human_size(&s), Some(n), "roundtrip failed for {}", s);
     }
     assert_eq!(parse_human_size("not a size"), None);
+}
+
+#[test]
+fn releases_parse_versions_and_sections() {
+    let md = "# Changelog\n\n## [2.0.0] - 2026-01-01\n\nIntro line here.\n\n### Added\n- one thing\n- another\n  wrapped line\n\n### Fixed\n- a bug\n\n## [1.0.0] - 2025-01-01\n### Removed\n- old thing\n";
+    let rels = parse_releases(md);
+    assert_eq!(rels.len(), 2);
+    assert_eq!(rels[0].version, "2.0.0");
+    assert_eq!(rels[0].date, "2026-01-01");
+    assert_eq!(rels[0].intro, "Intro line here.");
+    assert_eq!(rels[0].sections.len(), 2);
+    assert_eq!(rels[0].sections[0].title, "Added");
+    assert_eq!(rels[0].sections[0].items.len(), 2);
+    // Continuation lines fold into the previous bullet.
+    assert!(rels[0].sections[0].items[1].contains("wrapped line"));
+    assert_eq!(rels[0].sections[1].items, vec!["a bug".to_string()]);
+    assert_eq!(rels[1].version, "1.0.0");
+    assert_eq!(rels[1].sections[0].title, "Removed");
+}
+
+#[test]
+fn releases_skip_preamble_and_separators() {
+    let md = "# Title\n\nSome preamble text.\n\n---\n\n## [1.2.3] - 2026-01-01\n### Added\n- x\n";
+    let rels = parse_releases(md);
+    assert_eq!(rels.len(), 1);
+    assert_eq!(rels[0].version, "1.2.3");
+    assert_eq!(rels[0].sections[0].items, vec!["x".to_string()]);
 }
 
 #[test]

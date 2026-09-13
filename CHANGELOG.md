@@ -14,6 +14,30 @@ Things planned for the next release. Nothing here is final yet.
 
 ---
 
+## [2.12.0] — 2026-09-13
+
+UI polish round — a proper release-notes viewer, theme customization,
+and a redesigned About page.
+
+### Added
+- **GitHub-style What's New page** — the changelog is parsed into
+  structured releases: a version dropdown picks which release to view,
+  and each section (Added / Fixed / Improved / Removed) renders with
+  its own color, matching GitHub's label colors. "View on GitHub"
+  links to the releases page.
+- **Theme customization window** — a new "Customize" button next to the
+  theme picker opens accent-color pickers (primary + secondary) and a
+  UI-scale slider (75%–150%). Changes apply instantly and persist.
+- **About page hero** — the real app icon, version chip, tagline, and
+  quick links to release notes and the repository, followed by a
+  two-column highlights grid.
+
+### Improved
+- Accent overrides recolor the whole app — buttons, selections, links,
+  progress bars, and the dashboard ring all read the live accent.
+
+---
+
 ## [2.11.0] — 2026-09-13
 
 Second polish pass — startup integration, smarter duplicate selection,

@@ -64,6 +64,24 @@ fn warn_color() -> egui::Color32 {
     egui::Color32::from_rgb(0xE0, 0x9A, 0x2E)
 }
 
+/// Color for changelog section headers — matches GitHub's label colors
+/// (green = added, amber = fixed, red = removed, purple = security,
+/// blue = changed/improved).
+fn changelog_section_color(title: &str) -> egui::Color32 {
+    let t = title.to_lowercase();
+    if t.contains("add") {
+        egui::Color32::from_rgb(0x3F, 0xB9, 0x50)
+    } else if t.contains("fix") {
+        egui::Color32::from_rgb(0xD2, 0x99, 0x22)
+    } else if t.contains("remov") {
+        egui::Color32::from_rgb(0xF8, 0x51, 0x49)
+    } else if t.contains("secur") {
+        egui::Color32::from_rgb(0xA3, 0x71, 0xF7)
+    } else {
+        egui::Color32::from_rgb(0x58, 0xA6, 0xFF)
+    }
+}
+
 /// Theme-aware card container; stretches to the available width.
 fn card(ui: &mut egui::Ui, title: &str, add_contents: impl FnOnce(&mut egui::Ui)) {
     egui::Frame::group(&ui.style())
@@ -737,6 +755,12 @@ pub struct CleanerApp {
     /// Park the window in the tray on the first frame (setting or
     /// `--minimized` launch flag). Consumed once the tray is ready.
     pub start_in_tray: bool,
+    /// Whether the theme-customization window is open.
+    pub customize_open: bool,
+    /// Version selected in the changelog viewer (None = latest).
+    pub changelog_version: Option<String>,
+    /// App-icon texture for the About page hero (loaded once).
+    pub icon_tex: Option<egui::TextureHandle>,
 
     pub custom: CustomCleanerState,
     pub duplicates: DuplicateState,
@@ -759,7 +783,8 @@ pub struct CleanerApp {
 impl Default for CleanerApp {
     fn default() -> Self {
         let settings = settings::Settings::load();
-        let initial_visuals = settings.theme.visuals();
+        let initial_visuals =
+            themes::tinted_visuals(settings.theme, settings.accent_rgb);
         let mut app = Self {
             tab: Tab::Dashboard,
             settings,
@@ -787,6 +812,9 @@ impl Default for CleanerApp {
             window_title: "Cleaner".to_string(),
             op_started: None,
             start_in_tray: false,
+            customize_open: false,
+            changelog_version: None,
+            icon_tex: None,
             custom: CustomCleanerState::default(),
             duplicates: DuplicateState::default(),
             large_files: LargeFilesState::default(),
@@ -1054,6 +1082,19 @@ impl CleanerApp {
 // -----------------------------------------------------------------------------
 
 impl CleanerApp {
+    /// Theme visuals with the user's accent override applied.
+    fn effective_visuals(&self) -> egui::Visuals {
+        themes::tinted_visuals(self.settings.theme, self.settings.accent_rgb)
+    }
+
+    /// Secondary accent — user override, else theme default.
+    fn accent2(&self) -> egui::Color32 {
+        self.settings
+            .accent2_rgb
+            .map(|[r, g, b]| egui::Color32::from_rgb(r, g, b))
+            .unwrap_or_else(|| self.settings.theme.accent2())
+    }
+
     pub fn update_theme_animation(&mut self, ctx: &egui::Context) {
         let now = ctx.input(|i| i.time);
         if self.theme_anim.active {
@@ -1089,7 +1130,7 @@ impl CleanerApp {
         } else {
             self.theme_anim.to.clone()
         };
-        let to = new_theme.visuals();
+        let to = themes::tinted_visuals(new_theme, self.settings.accent_rgb);
         self.theme_anim.start(from, to, now);
         self.settings.theme = new_theme;
         self.settings.save();
@@ -1743,7 +1784,7 @@ impl CleanerApp {
                         let resp = start_ring(
                             ui,
                             if busy { Some(self.progress) } else { None },
-                            self.settings.theme.accent2(),
+                            self.accent2(),
                         );
                         if resp.clicked() && !busy {
                             self.tab = Tab::SystemCleaner;
@@ -3374,12 +3415,91 @@ impl CleanerApp {
     }
 
     fn draw_changelog(&mut self, ui: &mut egui::Ui) {
-        card(ui, "", |ui| {
+        let releases = parse_releases(CHANGELOG);
+        if releases.is_empty() {
+            empty_state(ui, "No release notes bundled.");
+            return;
+        }
+        let sel = self
+            .changelog_version
+            .clone()
+            .unwrap_or_else(|| releases[0].version.clone());
+
+        card(ui, "What's new", |ui| {
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("Version:").weak().small());
+                egui::ComboBox::from_id_source("changelog_version")
+                    .selected_text(format!("v{}", sel))
+                    .show_ui(ui, |ui| {
+                        for r in &releases {
+                            if ui
+                                .selectable_label(
+                                    r.version == sel,
+                                    format!("v{}", r.version),
+                                )
+                                .clicked()
+                            {
+                                self.changelog_version = Some(r.version.clone());
+                            }
+                        }
+                    });
+                if sel == releases[0].version {
+                    ui.label(
+                        egui::RichText::new("latest").small().color(accent(ui)),
+                    );
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.small_button("View on GitHub").clicked() {
+                        let _ = open::that(format!(
+                            "{}/releases",
+                            self.settings.github_url.trim_end_matches('/')
+                        ));
+                    }
+                });
+            });
+            ui.add_space(8.0);
+
+            let Some(rel) = releases
+                .iter()
+                .find(|r| r.version == sel)
+                .or_else(|| releases.first())
+            else {
+                empty_state(ui, "No notes for this version.");
+                return;
+            };
+
             egui::ScrollArea::vertical()
                 .id_source("changelog_scroll")
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    ui.label(egui::RichText::new(CHANGELOG).monospace().small());
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new(format!("v{}", rel.version))
+                                .size(18.0)
+                                .strong(),
+                        );
+                        ui.label(egui::RichText::new(&rel.date).weak());
+                    });
+                    if !rel.intro.is_empty() {
+                        ui.add_space(2.0);
+                        ui.label(egui::RichText::new(&rel.intro).weak().small());
+                    }
+                    ui.add_space(8.0);
+                    for sec in &rel.sections {
+                        ui.colored_label(
+                            changelog_section_color(&sec.title),
+                            egui::RichText::new(&sec.title).strong(),
+                        );
+                        ui.add_space(2.0);
+                        for item in &sec.items {
+                            ui.horizontal(|ui| {
+                                ui.add_space(8.0);
+                                ui.label(egui::RichText::new("•").weak());
+                                ui.add(egui::Label::new(item).wrap(true));
+                            });
+                        }
+                        ui.add_space(6.0);
+                    }
                 });
         });
     }
@@ -3392,39 +3512,84 @@ impl CleanerApp {
     }
 
     fn draw_about_inner(&mut self, ui: &mut egui::Ui) {
+        // Load the app icon once for the hero card.
+        if self.icon_tex.is_none() {
+            let icon = themes::generate_icon();
+            self.icon_tex = Some(ui.ctx().load_texture(
+                "about_icon",
+                egui::ColorImage::from_rgba_unmultiplied(
+                    [icon.width as usize, icon.height as usize],
+                    &icon.rgba,
+                ),
+                egui::TextureOptions::LINEAR,
+            ));
+        }
+
+        // Hero — icon, name, version, tagline, quick links.
         card(ui, "", |ui| {
             ui.horizontal(|ui| {
+                if let Some(tex) = &self.icon_tex {
+                    ui.image((tex.id(), egui::vec2(64.0, 64.0)));
+                    ui.add_space(12.0);
+                }
                 ui.vertical(|ui| {
-                    ui.label(egui::RichText::new("Cleaner").size(22.0).strong());
+                    ui.label(egui::RichText::new("Cleaner").size(24.0).strong());
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "v{}",
+                                env!("CARGO_PKG_VERSION")
+                            ))
+                            .color(accent(ui)),
+                        );
+                        ui.label(
+                            egui::RichText::new("· Rust + eframe/egui")
+                                .weak()
+                                .small(),
+                        );
+                    });
                     ui.label(
-                        egui::RichText::new(format!(
-                            "Version {}",
-                            env!("CARGO_PKG_VERSION")
-                        ))
-                        .weak(),
+                        egui::RichText::new(
+                            "A fast, safe system-cleaning utility — \
+                             no telemetry, no accounts, no network calls.",
+                        )
+                        .weak()
+                        .small(),
                     );
                 });
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.vertical(|ui| {
+                        if ui.button("Release notes").clicked() {
+                            self.tab = Tab::Changelog;
+                        }
+                        if ui.button("GitHub").clicked() {
+                            let _ = open::that(&self.settings.github_url);
+                        }
+                    });
+                });
             });
-            ui.add_space(4.0);
-            ui.label("A modern, fast, and safe system cleaning utility written in Rust.");
         });
 
         ui.add_space(10.0);
 
-        card(ui, "Features", |ui| {
-            for line in [
-                "Custom file cleaning with filters",
-                "Duplicate file finder (two-stage hashing)",
+        card(ui, "Highlights", |ui| {
+            let feats = [
+                "Custom cleaning with filters",
+                "Duplicate finder (two-stage hashing)",
                 "Large file finder",
-                "System junk cleaner (temp files, caches)",
-                "Empty folder cleaner (cascade-aware)",
+                "System junk cleaner",
+                "Empty folder cleaner",
                 "Secure Delete (3-pass shredder)",
-                "5 themes with animated transitions",
-                "Recycle-bin deletion and dry-run safety",
-                "Storage overview and exportable reports",
-            ] {
-                ui.label(format!("• {}", line));
-            }
+                "6 themes + custom accent colors",
+                "System tray + scheduled scans",
+                "Recycle-bin deletes & dry run",
+                "Storage overview & reports",
+            ];
+            ui.columns(2, |cols| {
+                for (i, f) in feats.iter().enumerate() {
+                    cols[i % 2].label(format!("• {}", f));
+                }
+            });
         });
 
         ui.add_space(10.0);
@@ -3557,8 +3722,10 @@ impl eframe::App for CleanerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if !self.initial_theme_applied {
             themes::apply_spacing(ctx);
-            ctx.set_visuals(self.settings.theme.visuals());
-            self.theme_anim.to = self.settings.theme.visuals();
+            let v = self.effective_visuals();
+            ctx.set_visuals(v.clone());
+            self.theme_anim.to = v;
+            ctx.set_zoom_factor(self.settings.ui_zoom.clamp(0.7, 1.6));
             self.initial_theme_applied = true;
         }
         if !self.tray_setup_done {
@@ -3780,6 +3947,13 @@ impl eframe::App for CleanerApp {
                     if let Some(t) = new_theme {
                         self.pending_theme_change = Some(t);
                     }
+                    if ui
+                        .button("Customize")
+                        .on_hover_text("Accent colors and UI scale")
+                        .clicked()
+                    {
+                        self.customize_open = true;
+                    }
                 });
             });
             ui.add_space(6.0);
@@ -3908,6 +4082,101 @@ impl eframe::App for CleanerApp {
             }
             if close {
                 self.confirm_action = None;
+            }
+        }
+
+        // -- appearance customization window -----------------------------------
+        if self.customize_open {
+            let mut open = self.customize_open;
+            let mut retint = false;
+            let mut dirty = false;
+            egui::Window::new("Customize appearance")
+                .collapsible(false)
+                .resizable(false)
+                .open(&mut open)
+                .show(ctx, |ui| {
+                    ui.label("Accent — buttons, selections, and links.");
+                    ui.horizontal(|ui| {
+                        let mut c = self.settings.accent_rgb.unwrap_or_else(|| {
+                            let a = self.settings.theme.accent();
+                            [a.r(), a.g(), a.b()]
+                        });
+                        if egui::widgets::color_picker::color_edit_button_srgb(
+                            ui, &mut c,
+                        )
+                        .changed()
+                        {
+                            self.settings.accent_rgb = Some(c);
+                            retint = true;
+                            dirty = true;
+                        }
+                        if self.settings.accent_rgb.is_some()
+                            && ui.small_button("Theme default").clicked()
+                        {
+                            self.settings.accent_rgb = None;
+                            retint = true;
+                            dirty = true;
+                        }
+                    });
+                    ui.add_space(8.0);
+                    ui.label("Secondary accent — gradients and the dashboard ring.");
+                    ui.horizontal(|ui| {
+                        let mut c2 = self.settings.accent2_rgb.unwrap_or_else(|| {
+                            let a = self.accent2();
+                            [a.r(), a.g(), a.b()]
+                        });
+                        if egui::widgets::color_picker::color_edit_button_srgb(
+                            ui, &mut c2,
+                        )
+                        .changed()
+                        {
+                            self.settings.accent2_rgb = Some(c2);
+                            dirty = true;
+                        }
+                        if self.settings.accent2_rgb.is_some()
+                            && ui.small_button("Theme default").clicked()
+                        {
+                            self.settings.accent2_rgb = None;
+                            dirty = true;
+                        }
+                    });
+                    ui.add_space(8.0);
+                    ui.label("Interface scale");
+                    if ui
+                        .add(
+                            egui::Slider::new(&mut self.settings.ui_zoom, 0.75..=1.5)
+                                .text("zoom"),
+                        )
+                        .changed()
+                    {
+                        ctx.set_zoom_factor(self.settings.ui_zoom);
+                        dirty = true;
+                    }
+                    if (self.settings.ui_zoom - 1.0).abs() > f32::EPSILON
+                        && ui.small_button("Reset to 100%").clicked()
+                    {
+                        self.settings.ui_zoom = 1.0;
+                        ctx.set_zoom_factor(1.0);
+                        dirty = true;
+                    }
+                    ui.add_space(4.0);
+                    ui.label(
+                        egui::RichText::new("Changes apply instantly and save automatically.")
+                            .weak()
+                            .small(),
+                    );
+                });
+            self.customize_open = open;
+            if retint {
+                // Re-tint live visuals; cancel any in-flight theme
+                // animation so the override isn't overwritten mid-lerp.
+                let v = self.effective_visuals();
+                self.theme_anim.to = v.clone();
+                self.theme_anim.active = false;
+                ctx.set_visuals(v);
+            }
+            if dirty {
+                self.settings.save();
             }
         }
     }

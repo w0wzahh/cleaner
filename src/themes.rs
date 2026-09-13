@@ -79,6 +79,21 @@ impl Theme {
     }
 }
 
+/// Theme visuals with the user's accent override applied. This is the
+/// single place the app should source display visuals from — every
+/// accent-colored surface reads `selection.bg_fill` / `hyperlink_color`
+/// off the live visuals, so overriding here recolors the whole app.
+pub fn tinted_visuals(theme: Theme, accent: Option<[u8; 3]>) -> egui::Visuals {
+    let mut v = theme.visuals();
+    if let Some([r, g, b]) = accent {
+        let c = egui::Color32::from_rgb(r, g, b);
+        v.hyperlink_color = c;
+        v.selection.bg_fill = c;
+        v.selection.stroke = egui::Stroke::new(1.0f32, egui::Color32::WHITE);
+    }
+    v
+}
+
 // -----------------------------------------------------------------------------
 // theme visuals
 // -----------------------------------------------------------------------------

@@ -107,6 +107,15 @@ pub struct Settings {
     pub dir_empty_folders: String,
     #[serde(default)]
     pub dir_folder_sizes: String,
+    /// Custom accent color override [r,g,b]; None = theme default.
+    #[serde(default)]
+    pub accent_rgb: Option<[u8; 3]>,
+    /// Custom secondary accent (gradients); None = theme default.
+    #[serde(default)]
+    pub accent2_rgb: Option<[u8; 3]>,
+    /// UI scale multiplier (egui zoom factor). 1.0 = default.
+    #[serde(default = "default_ui_zoom")]
+    pub ui_zoom: f32,
 }
 
 fn default_schedule_hours() -> u32 {
@@ -131,6 +140,10 @@ fn default_custom_extensions() -> String {
 
 fn default_large_threshold() -> u64 {
     100
+}
+
+fn default_ui_zoom() -> f32 {
+    1.0
 }
 
 /// What a scheduled scan operates on.
@@ -201,6 +214,9 @@ impl Default for Settings {
             dir_large_files: String::new(),
             dir_empty_folders: String::new(),
             dir_folder_sizes: String::new(),
+            accent_rgb: None,
+            accent2_rgb: None,
+            ui_zoom: 1.0,
         }
     }
 }

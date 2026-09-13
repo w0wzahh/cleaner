@@ -11,6 +11,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.12.0] - 2026-09-13
+### Added
+- UI polish round. The changelog is now a proper release-notes viewer:
+  pick a version from the dropdown and its notes render GitHub-style
+  with colored Added/Fixed/Removed sections. A new Customize button
+  next to the theme picker opens accent-color pickers and a UI-scale
+  slider — changes apply instantly and persist. The About page got a
+  hero card with the real app icon plus a two-column highlights grid.
+
 ## [2.11.0] - 2026-09-13
 ### Added
 - Second polish pass. "Keep newest" / "Keep oldest" one-click selection
@@ -584,6 +593,75 @@ impl Default for EmptyFoldersState {
             filter: String::new(),
         }
     }
+}
+
+/// One `###` block inside a release entry (e.g. "Added", "Fixed").
+#[derive(Clone, Debug)]
+pub struct ReleaseSection {
+    pub title: String,
+    pub items: Vec<String>,
+}
+
+/// One parsed `## [x.y.z]` entry from the embedded changelog.
+#[derive(Clone, Debug)]
+pub struct Release {
+    pub version: String,
+    pub date: String,
+    /// Prose between the version header and the first `###` section.
+    pub intro: String,
+    pub sections: Vec<ReleaseSection>,
+}
+
+/// Parse the Keep-a-Changelog markdown into structured releases so the UI
+/// can render them GitHub-style instead of dumping raw markdown.
+pub fn parse_releases(md: &str) -> Vec<Release> {
+    let mut out: Vec<Release> = Vec::new();
+    for line in md.lines() {
+        let t = line.trim();
+        if let Some(rest) = t.strip_prefix("## [") {
+            if let Some(end) = rest.find(']') {
+                out.push(Release {
+                    version: rest[..end].to_string(),
+                    date: rest[end + 1..]
+                        .trim_start_matches(['-', '—', ' '])
+                        .to_string(),
+                    intro: String::new(),
+                    sections: Vec::new(),
+                });
+                continue;
+            }
+        }
+        let Some(rel) = out.last_mut() else { continue };
+        if let Some(title) = t.strip_prefix("### ") {
+            rel.sections.push(ReleaseSection {
+                title: title.to_string(),
+                items: Vec::new(),
+            });
+        } else if let Some(b) = t.strip_prefix("- ") {
+            if let Some(sec) = rel.sections.last_mut() {
+                sec.items.push(b.to_string());
+            } else {
+                rel.intro = b.to_string();
+            }
+        } else if t.is_empty() || t.starts_with('#') || t == "---" {
+            // Headers, separators, blank lines — not release content.
+            continue;
+        } else if rel.sections.is_empty() {
+            if !rel.intro.is_empty() {
+                rel.intro.push(' ');
+            }
+            rel.intro.push_str(t);
+        } else if let Some(last) = rel
+            .sections
+            .last_mut()
+            .and_then(|s| s.items.last_mut())
+        {
+            // Wrapped continuation of the previous bullet.
+            last.push(' ');
+            last.push_str(t);
+        }
+    }
+    out
 }
 
 /// Snapshot of one mounted drive for the Storage tab.
