@@ -11,6 +11,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.12.3] - 2026-09-13
+### Improved
+- Duplicate scanning is dramatically faster — both hashing stages run
+  across all CPU cores, the fingerprint pass uses xxh3 (head+tail+size),
+  and the confirmation pass uses BLAKE3 (~10x faster than SHA-256 while
+  remaining collision-safe for deletion).
+- Fewer disk syscalls — file sizes come from the directory listing on
+  Windows instead of a metadata call per file.
+
+### Fixed
+- Duplicate results no longer freeze the app on huge scans — the groups
+  list renders only the visible slice, and the sorted/filtered view is
+  cached instead of rebuilt every frame.
+
 ## [2.12.2] - 2026-09-13
 ### Fixed
 - Theme dropdown vertical alignment — it still sat a few pixels below the
@@ -465,6 +479,16 @@ pub struct DuplicateState {
     pub filter: String,
     /// Group ordering: size compares total reclaimable per group.
     pub sort: SortMode,
+    /// Sorted+filtered indices into `groups` — rebuilt when `view_dirty`,
+    /// not per frame (sorting thousands of groups each frame stalls the UI).
+    pub view: Vec<usize>,
+    /// Measured pixel height per view slot (open groups are taller). Slots
+    /// start unmeasured (None → estimated) and are corrected when rendered.
+    pub view_heights: Vec<Option<f32>>,
+    /// Last measured height of a *closed* group header — the estimate used
+    /// for slots that haven't rendered yet.
+    pub closed_h: f32,
+    pub view_dirty: bool,
 }
 
 impl Default for DuplicateState {
@@ -476,6 +500,10 @@ impl Default for DuplicateState {
             total_wasted: 0,
             filter: String::new(),
             sort: SortMode::default(),
+            view: Vec::new(),
+            view_heights: Vec::new(),
+            closed_h: 30.0,
+            view_dirty: true,
         }
     }
 }

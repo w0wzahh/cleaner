@@ -14,6 +14,34 @@ Things planned for the next release. Nothing here is final yet.
 
 ---
 
+## [2.12.3] — 2026-09-13
+
+Duplicate scanning is now dramatically faster, and the results list no
+longer stalls on huge scans.
+
+### Improved
+
+- **Parallel duplicate detection** — the two hashing stages now run across
+  all CPU cores (rayon) instead of one file at a time.
+- **Much faster hashing** — the fingerprint pass uses xxh3 (first 8 KB +
+  last 4 KB + size — catches files that share a header but diverge at the
+  end) and the confirmation pass uses BLAKE3 (~10x faster than the old
+  SHA-256 while remaining collision-safe for deletion).
+- **Fewer disk syscalls** — file sizes come from the directory listing
+  itself on Windows instead of a metadata call per file.
+- A 12,000-file folder with 6,000 duplicate groups now scans in well under
+  a second.
+
+### Fixed
+
+- **Duplicate results no longer freeze the app** — the groups list rendered
+  every group header every frame; with tens of thousands of groups the UI
+  stalled out. It now renders only the visible slice (measured-height
+  virtualization), and the sorted/filtered view is cached instead of being
+  rebuilt per frame.
+
+---
+
 ## [2.12.2] — 2026-09-13
 
 A follow-up fix for the theme picker in the header.

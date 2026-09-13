@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::Local;
-use sha2::{Digest, Sha256};
+use std::io::Read;
 use walkdir::WalkDir;
 
 use crate::models::{LargeFile, MatchedFile};
@@ -359,21 +359,40 @@ pub fn shred_file(path: &Path, cancel: Option<&AtomicBool>) -> Result<(), String
 // duplicate hashing
 // -----------------------------------------------------------------------------
 
-pub fn quick_hash_of_file(path: &Path, size: u64) -> Option<String> {
-    use std::io::Read;
-    let file = File::open(path).ok()?;
-    let mut head = Vec::with_capacity(8192);
-    file.take(8192).read_to_end(&mut head).ok()?;
-    let mut hasher = Sha256::new();
+/// Fast fingerprint used only to decide which files are worth a full hash —
+/// xxh3 over the first 8 KB + last 4 KB + the file size (the bc-duplicate
+/// trick: some formats share identical prefixes and only diverge at the end).
+/// Collisions here just cost an extra full read, so a fast non-crypto hash is
+/// fine. Files can change size between the walk and this read, so reads are
+/// best-effort rather than exact.
+pub fn quick_hash_of_file(path: &Path, size: u64) -> Option<u64> {
+    let mut file = File::open(path).ok()?;
+    let mut hasher = xxhash_rust::xxh3::Xxh3::new();
+    let mut head = Vec::with_capacity(size.min(8192) as usize);
+    (&file).take(8192).read_to_end(&mut head).ok()?;
     hasher.update(&head);
+    if size > head.len() as u64 {
+        let tail_len = (size - head.len() as u64).min(4096);
+        if file
+            .seek(SeekFrom::End(-(tail_len as i64)))
+            .is_ok()
+        {
+            let mut tail = Vec::with_capacity(tail_len as usize);
+            if (&file).take(tail_len).read_to_end(&mut tail).is_ok() {
+                hasher.update(&tail);
+            }
+        }
+    }
     hasher.update(&size.to_le_bytes());
-    Some(format!("{:x}", hasher.finalize()))
+    Some(hasher.digest())
 }
 
+/// Content hash for final duplicate confirmation — BLAKE3, ~10x faster than
+/// SHA-256 while remaining cryptographically collision-safe (this tool deletes
+/// files, so a weak final hash is not acceptable).
 pub fn full_hash_of_file(path: &Path) -> Option<String> {
-    use std::io::Read;
     let mut file = File::open(path).ok()?;
-    let mut hasher = Sha256::new();
+    let mut hasher = blake3::Hasher::new();
     let mut buf = vec![0u8; 1024 * 1024];
     loop {
         let n = file.read(&mut buf).ok()?;
@@ -382,7 +401,7 @@ pub fn full_hash_of_file(path: &Path) -> Option<String> {
         }
         hasher.update(&buf[..n]);
     }
-    Some(format!("{:x}", hasher.finalize()))
+    Some(hasher.finalize().to_hex().to_string())
 }
 
 // -----------------------------------------------------------------------------

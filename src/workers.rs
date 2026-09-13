@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 
+use rayon::prelude::*;
 use walkdir::WalkDir;
 
 use crate::helpers;
@@ -199,13 +200,16 @@ pub fn duplicates_worker(
             return;
         }
         if let Ok(entry) = entry {
-            let path = entry.path();
             if entry.file_type().is_file() {
+                let path = entry.path();
                 if helpers::is_excluded_prepped(path, &excludes) {
                     skipped_excluded += 1;
                     continue;
                 }
-                if let Ok(meta) = fs::metadata(path) {
+                // DirEntry::metadata is free on Windows (cached from the
+                // directory listing) — fs::metadata would add a syscall
+                // per file.
+                if let Ok(meta) = entry.metadata() {
                     // Zero-byte files all hash identically and aren't worth reporting.
                     if meta.len() == 0 {
                         continue;
@@ -226,66 +230,98 @@ pub fn duplicates_worker(
             String::new()
         }
     )));
-    let _ = tx.send(WorkerMessage::Progress(0.1));
+    let _ = tx.send(WorkerMessage::Progress(0.05));
 
-    let mut groups = Vec::new();
-    let mut processed_groups = 0;
-    let total_groups = size_map.len();
+    // Only same-size files can be duplicates — flatten those candidates.
+    let candidates: Vec<(u64, PathBuf)> = size_map
+        .into_iter()
+        .filter(|(_, files)| files.len() > 1)
+        .flat_map(|(size, files)| files.into_iter().map(move |f| (size, f)))
+        .collect();
 
-    for (_size, files) in size_map {
-        if files.len() < 2 {
-            processed_groups += 1;
-            continue;
-        }
+    let _ = tx.send(WorkerMessage::Log(format!(
+        "Quick-fingerprinting {} same-size files (parallel)...",
+        candidates.len()
+    )));
 
-        let mut quick_map: HashMap<String, Vec<PathBuf>> = HashMap::new();
-        for file in &files {
+    // Stage 2 (parallel): quick fingerprint — xxh3 over head+tail+size.
+    let counter = std::sync::atomic::AtomicUsize::new(0);
+    let total_candidates = candidates.len().max(1);
+    let quick_hashed: Vec<(u64, u64, PathBuf)> = candidates
+        .par_iter()
+        .filter_map(|(size, path)| {
             if cancel_flag.load(Ordering::Relaxed) {
-                let _ = tx.send(WorkerMessage::Cancelled);
-                return;
+                return None;
             }
-            if let Some(quick_hash) = helpers::quick_hash_of_file(file, _size) {
-                quick_map.entry(quick_hash).or_default().push(file.clone());
+            let n = counter.fetch_add(1, Ordering::Relaxed) + 1;
+            if n % 512 == 0 {
+                let p = 0.05 + 0.35 * (n as f32 / total_candidates as f32);
+                let _ = tx.send(WorkerMessage::Progress(p));
             }
-        }
+            helpers::quick_hash_of_file(path, *size).map(|q| (*size, q, path.clone()))
+        })
+        .collect();
 
-        for (_key, quick_files) in quick_map {
-            if quick_files.len() < 2 {
-                continue;
-            }
-            let mut full_map: HashMap<String, Vec<PathBuf>> = HashMap::new();
-            for file in &quick_files {
-                if cancel_flag.load(Ordering::Relaxed) {
-                    let _ = tx.send(WorkerMessage::Cancelled);
-                    return;
-                }
-                if let Some(hash_str) = helpers::full_hash_of_file(file) {
-                    full_map.entry(hash_str).or_default().push(file.clone());
-                }
-            }
-            for (hash, mut full_files) in full_map {
-                if full_files.len() > 1 {
-                    // Deterministic order so the "kept" file is stable run to run.
-                    full_files.sort();
-                    groups.push(DuplicateGroup {
-                        hash,
-                        files: full_files,
-                        size: _size,
-                    });
-                }
-            }
-        }
-
-        processed_groups += 1;
-        let progress = 0.1 + 0.85 * (processed_groups as f32 / total_groups.max(1) as f32);
-        let _ = tx.send(WorkerMessage::Progress(progress));
-        if processed_groups % 10 == 0 {
-            let _ = tx.send(WorkerMessage::Log(format!(
-                "Processed {}/{} groups...",
-                processed_groups, total_groups
-            )));
-        }
+    if cancel_flag.load(Ordering::Relaxed) {
+        let _ = tx.send(WorkerMessage::Cancelled);
+        return;
     }
+
+    // Only files still colliding after the fingerprint need a full read.
+    let mut quick_map: HashMap<(u64, u64), Vec<PathBuf>> = HashMap::new();
+    for (size, qhash, path) in quick_hashed {
+        quick_map.entry((size, qhash)).or_default().push(path);
+    }
+    let finalists: Vec<(u64, PathBuf)> = quick_map
+        .into_iter()
+        .filter(|(_, files)| files.len() > 1)
+        .flat_map(|((size, _), files)| files.into_iter().map(move |f| (size, f)))
+        .collect();
+
+    let _ = tx.send(WorkerMessage::Progress(0.45));
+    let _ = tx.send(WorkerMessage::Log(format!(
+        "Full-hashing {} remaining candidates (parallel)...",
+        finalists.len()
+    )));
+
+    // Stage 3 (parallel): full BLAKE3 — cryptographic strength so a
+    // collision can't cause a wrong deletion.
+    counter.store(0, Ordering::Relaxed);
+    let total_finalists = finalists.len().max(1);
+    let full_hashed: Vec<(u64, PathBuf, String)> = finalists
+        .par_iter()
+        .filter_map(|(size, path)| {
+            if cancel_flag.load(Ordering::Relaxed) {
+                return None;
+            }
+            let n = counter.fetch_add(1, Ordering::Relaxed) + 1;
+            if n % 32 == 0 {
+                let p = 0.45 + 0.5 * (n as f32 / total_finalists as f32);
+                let _ = tx.send(WorkerMessage::Progress(p));
+            }
+            helpers::full_hash_of_file(path).map(|h| (*size, path.clone(), h))
+        })
+        .collect();
+
+    if cancel_flag.load(Ordering::Relaxed) {
+        let _ = tx.send(WorkerMessage::Cancelled);
+        return;
+    }
+
+    let mut full_map: HashMap<(u64, String), Vec<PathBuf>> = HashMap::new();
+    for (size, path, hash) in full_hashed {
+        full_map.entry((size, hash)).or_default().push(path);
+    }
+
+    let mut groups: Vec<DuplicateGroup> = full_map
+        .into_iter()
+        .filter(|(_, files)| files.len() > 1)
+        .map(|((size, hash), mut files)| {
+            // Deterministic order so the "kept" file is stable run to run.
+            files.sort();
+            DuplicateGroup { hash, files, size }
+        })
+        .collect();
 
     // Deterministic order: most reclaimable first, ties by first path.
     groups.sort_by(|a, b| {

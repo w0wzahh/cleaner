@@ -1278,6 +1278,7 @@ impl CleanerApp {
         self.duplicates.groups.clear();
         self.duplicates.selected_files.clear();
         self.duplicates.total_wasted = 0;
+        self.duplicates.view_dirty = true;
         self.log.clear();
         self.cancel_flag = Arc::new(AtomicBool::new(false));
         let (tx, rx) = mpsc::channel();
@@ -1558,6 +1559,7 @@ impl CleanerApp {
             g.files.retain(|f| !gone.contains(f));
         }
         self.duplicates.groups.retain(|g| g.files.len() > 1);
+        self.duplicates.view_dirty = true;
         self.duplicates.total_wasted = self.dup_wasted();
 
         self.empty_folders.folders.retain(|p| !gone.contains(p));
@@ -1604,6 +1606,7 @@ impl CleanerApp {
                         }
                         self.duplicates.selected_files = selected;
                         self.duplicates.groups = groups;
+                        self.duplicates.view_dirty = true;
                         self.duplicates.total_wasted = self.dup_wasted();
                     }
                     workers::WorkerMessage::LargeFiles(files) => {
@@ -2705,7 +2708,7 @@ impl CleanerApp {
                     ui.add_space(6.0);
                     ui.label(
                         egui::RichText::new(
-                            "Two-stage hashing: groups by size, quick-hashes 8 KB, then full SHA-256.",
+                            "Three-stage hashing: groups by size, fingerprints head+tail, then full BLAKE3 — all in parallel.",
                         )
                         .weak()
                         .small(),
@@ -2763,18 +2766,25 @@ impl CleanerApp {
 
                     ui.horizontal(|ui| {
                         ui.label(egui::RichText::new("Filter:").weak().small());
-                        ui.add(
-                            egui::TextEdit::singleline(&mut s.duplicates.filter)
-                                .hint_text("type to filter results")
-                                .desired_width(180.0),
-                        );
+                        if ui
+                            .add(
+                                egui::TextEdit::singleline(&mut s.duplicates.filter)
+                                    .hint_text("type to filter results")
+                                    .desired_width(180.0),
+                            )
+                            .changed()
+                        {
+                            s.duplicates.view_dirty = true;
+                        }
                         if !s.duplicates.filter.is_empty()
                             && ui.small_button("Clear").clicked()
                         {
                             s.duplicates.filter.clear();
+                            s.duplicates.view_dirty = true;
                         }
                         ui.separator();
                         ui.label(egui::RichText::new("Sort:").weak().small());
+                        let prev_sort = s.duplicates.sort;
                         egui::ComboBox::from_id_source("dup_sort")
                             .selected_text(s.duplicates.sort.label())
                             .show_ui(ui, |ui| {
@@ -2786,6 +2796,9 @@ impl CleanerApp {
                                     );
                                 }
                             });
+                        if s.duplicates.sort != prev_sort {
+                            s.duplicates.view_dirty = true;
+                        }
                         ui.with_layout(
                             egui::Layout::right_to_left(egui::Align::Center),
                             |ui| {
@@ -2801,62 +2814,108 @@ impl CleanerApp {
                     });
                     ui.add_space(4.0);
 
-                    let filter = s.duplicates.filter.to_lowercase();
-                    let sort = s.duplicates.sort;
+                    // Rebuild the sorted/filtered index view only when the
+                    // inputs change — sorting thousands of groups every frame
+                    // stalls the UI.
+                    if s.duplicates.view_dirty {
+                        let filter = s.duplicates.filter.to_lowercase();
+                        let sort = s.duplicates.sort;
+                        let groups = &s.duplicates.groups;
+                        let mut view: Vec<usize> = groups
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, g)| {
+                                filter.is_empty()
+                                    || g.files.iter().any(|f| {
+                                        f.to_string_lossy()
+                                            .to_lowercase()
+                                            .contains(&filter)
+                                    })
+                            })
+                            .map(|(i, _)| i)
+                            .collect();
+                        let keys: Vec<(u64, String)> = groups
+                            .iter()
+                            .map(|g| {
+                                (
+                                    g.size
+                                        * g.files.len().saturating_sub(1) as u64,
+                                    g.files
+                                        .first()
+                                        .map(|f| name_key(f))
+                                        .unwrap_or_default(),
+                                )
+                            })
+                            .collect();
+                        view.sort_by(|&a, &b| {
+                            sort.compare(
+                                (keys[a].0, keys[a].1.as_str()),
+                                (keys[b].0, keys[b].1.as_str()),
+                            )
+                        });
+                        s.duplicates.view = view;
+                        s.duplicates.view_heights =
+                            vec![None; s.duplicates.view.len()];
+                        s.duplicates.view_dirty = false;
+                    }
+
                     let groups = &s.duplicates.groups;
                     let selected = &mut s.duplicates.selected_files;
+                    let view = &s.duplicates.view;
+                    let heights = &mut s.duplicates.view_heights;
+                    let mut closed_h = s.duplicates.closed_h;
                     let mut changed = false;
                     let list_h = Self::list_area_h(ui);
                     ui.allocate_ui(egui::vec2(ui.available_width(), list_h), |ui| {
                         egui::ScrollArea::vertical()
                             .id_source("duplicates_scroll")
                             .auto_shrink([false, false])
-                            .show(ui, |ui| {
-                                if groups.is_empty() {
+                            // Render only the visible slice — thousands of
+                            // collapsing headers per frame used to hang the app.
+                            .show_viewport(ui, |ui, viewport| {
+                                if view.is_empty() {
                                     empty_state(
                                         ui,
                                         "No duplicate groups found yet — run a scan.",
                                     );
                                     return;
                                 }
-                                let mut view: Vec<(&DuplicateGroup, String)> = groups
-                                    .iter()
-                                    .filter(|g| {
-                                        filter.is_empty()
-                                            || g.files.iter().any(|f| {
-                                                f.to_string_lossy()
-                                                    .to_lowercase()
-                                                    .contains(&filter)
-                                            })
-                                    })
-                                    .map(|g| {
-                                        (
-                                            g,
-                                            g.files
-                                                .first()
-                                                .map(|f| name_key(f))
-                                                .unwrap_or_default(),
-                                        )
-                                    })
-                                    .collect();
-                                view.sort_by(|a, b| {
-                                    // "Size" for a group = total reclaimable bytes.
-                                    let wasted = |g: &DuplicateGroup| {
-                                        g.size
-                                            * (g.files.len().saturating_sub(1)) as u64
-                                    };
-                                    sort.compare(
-                                        (wasted(a.0), a.1.as_str()),
-                                        (wasted(b.0), b.1.as_str()),
-                                    )
-                                });
-                                for (group, _) in view {
-                                    ui.collapsing(
+                                let h = |i: usize| {
+                                    heights[i].unwrap_or(closed_h)
+                                };
+                                let total: f32 = (0..view.len()).map(&h).sum();
+                                let mut cum = 0.0f32;
+                                let mut start = 0usize;
+                                while start < view.len()
+                                    && cum + h(start) <= viewport.min.y
+                                {
+                                    cum += h(start);
+                                    start += 1;
+                                }
+                                let before = cum;
+                                let mut end = start;
+                                // +4 slots of margin so expanding a group at
+                                // the bottom edge gets its body measured.
+                                while end < view.len()
+                                    && (cum < viewport.max.y
+                                        || end < start + 4)
+                                {
+                                    cum += h(end);
+                                    end += 1;
+                                }
+                                let after = total - cum;
+
+                                ui.add_space(before.max(0.0));
+                                for vi in start..end.min(view.len()) {
+                                    let group = &groups[view[vi]];
+                                    let y0 = ui.cursor().min.y;
+                                    let resp = ui.collapsing(
                                         format!(
                                             "{} files · {} each · {}",
                                             group.files.len(),
                                             helpers::human_size(group.size),
-                                            &group.hash[..8.min(group.hash.len())]
+                                            &group.hash
+                                                [..8.min(group.hash.len())]
                                         ),
                                         |ui| {
                                             for (i, file) in
@@ -2893,9 +2952,19 @@ impl CleanerApp {
                                             }
                                         },
                                     );
+                                    let consumed =
+                                        ui.cursor().min.y - y0;
+                                    if consumed > 0.0 {
+                                        heights[vi] = Some(consumed);
+                                        if resp.body_response.is_none() {
+                                            closed_h = consumed;
+                                        }
+                                    }
                                 }
+                                ui.add_space(after.max(0.0));
                             });
                     });
+                    s.duplicates.closed_h = closed_h;
 
                     if changed {
                         s.duplicates.total_wasted = s.dup_wasted();
