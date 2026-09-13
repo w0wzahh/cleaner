@@ -73,6 +73,22 @@ pub struct Settings {
     /// toggles survive restarts.
     #[serde(default)]
     pub disabled_targets: Vec<String>,
+    /// Custom Clean filters, persisted so they survive restarts.
+    #[serde(default = "default_custom_extensions")]
+    pub custom_extensions: String,
+    #[serde(default)]
+    pub custom_pattern: String,
+    #[serde(default)]
+    pub custom_older_than: u64,
+    #[serde(default)]
+    pub custom_min_size: u64,
+    #[serde(default)]
+    pub custom_max_size: u64,
+    #[serde(default)]
+    pub custom_exclude_dirs: String,
+    /// Large Files size threshold (MB), persisted.
+    #[serde(default = "default_large_threshold")]
+    pub large_threshold_mb: u64,
 }
 
 fn default_schedule_hours() -> u32 {
@@ -89,6 +105,14 @@ fn default_github_url() -> String {
 
 fn default_log_file() -> String {
     "cleaner_history.log".to_string()
+}
+
+fn default_custom_extensions() -> String {
+    "tmp,log".to_string()
+}
+
+fn default_large_threshold() -> u64 {
+    100
 }
 
 /// What a scheduled scan operates on.
@@ -145,6 +169,13 @@ impl Default for Settings {
             schedule_last_run: 0,
             welcomed: false,
             disabled_targets: Vec::new(),
+            custom_extensions: default_custom_extensions(),
+            custom_pattern: String::new(),
+            custom_older_than: 0,
+            custom_min_size: 0,
+            custom_max_size: 0,
+            custom_exclude_dirs: String::new(),
+            large_threshold_mb: 100,
         }
     }
 }

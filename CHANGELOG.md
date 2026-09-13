@@ -14,6 +14,36 @@ Things planned for the next release. Nothing here is final yet.
 
 ---
 
+## [2.10.0] — 2026-09-13
+
+Polish pass — usability and quality-of-life improvements, no behavior
+changes to the delete paths.
+
+### Added
+- **Result rows are interactive** — double-click any file/folder row to
+  reveal it in Explorer; right-click for a context menu (Copy path /
+  Reveal in Explorer). Works on Custom Clean, Large Files, System
+  Cleaner, and Empty Folders results.
+- **Filter + sort on System Cleaner results** — the last results tab
+  that was missing them.
+- **Copy button on the activity log** — one click puts the whole log on
+  the clipboard, handy for bug reports.
+- **Scan/clean duration in summaries** — completion lines now end with
+  "(took 1.8s)".
+- **Status in the window title and tray tooltip** — while busy they show
+  e.g. "Cleaner — Scanning...".
+
+### Improved
+- **Custom Clean filters and the Large Files threshold now persist**
+  across restarts (saved to settings on scan).
+- **"Select all" respects the active filter** — with a filter typed,
+  only matching rows get selected (Custom Clean and Large Files).
+- **Escape closes the confirm dialog.**
+- **Activity log sticks to the bottom** as new lines arrive.
+- "Reveal in Explorer" now highlights folders too, not just files.
+
+---
+
 ## [2.9.9] — 2026-09-13
 
 Seventh audit pass — filled a feature gap the changelog had claimed since

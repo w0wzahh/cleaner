@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
+use std::time::Instant;
 
 use chrono::{Local, TimeZone};
 use eframe::egui;
@@ -390,7 +391,7 @@ fn empty_state(ui: &mut egui::Ui, text: &str) {
 /// Scrollable list of matched files with right-aligned sizes. Virtualized
 /// via show_rows — a system scan can match tens of thousands of files and
 /// laying out every row every frame would make the UI crawl.
-fn matched_file_rows(ui: &mut egui::Ui, files: &[MatchedFile], id: &str) {
+fn matched_file_rows(ui: &mut egui::Ui, files: &[&MatchedFile], id: &str) {
     if files.is_empty() {
         egui::ScrollArea::vertical()
             .id_source(id)
@@ -405,7 +406,8 @@ fn matched_file_rows(ui: &mut egui::Ui, files: &[MatchedFile], id: &str) {
         .show_rows(ui, row_h, files.len(), |ui, range| {
             for f in &files[range] {
                 ui.horizontal(|ui| {
-                    ui.monospace(f.path.display().to_string());
+                    let resp = ui.monospace(f.path.display().to_string());
+                    file_row_menu(&resp, &f.path);
                     ui.with_layout(
                         egui::Layout::right_to_left(egui::Align::Center),
                         |ui| {
@@ -419,11 +421,28 @@ fn matched_file_rows(ui: &mut egui::Ui, files: &[MatchedFile], id: &str) {
         });
 }
 
-/// Open a path in the system file manager. Files get a real "reveal" —
-/// `explorer /select` highlights the file inside its folder instead of
-/// opening it in the default editor.
+/// Row-level file interactions: double-click reveals the file, right-click
+/// offers Copy path / Reveal in Explorer.
+fn file_row_menu(resp: &egui::Response, path: &Path) {
+    if resp.double_clicked() {
+        reveal_in_explorer(path);
+    }
+    resp.context_menu(|ui| {
+        if ui.button("Copy path").clicked() {
+            ui.ctx().output_mut(|o| o.copied_text = path.display().to_string());
+            ui.close_menu();
+        }
+        if ui.button("Reveal in Explorer").clicked() {
+            reveal_in_explorer(path);
+            ui.close_menu();
+        }
+    });
+}
+
+/// Open a path in the system file manager. `explorer /select` highlights the
+/// file or folder inside its parent instead of opening it.
 fn reveal_in_explorer(path: &Path) {
-    if cfg!(windows) && path.is_file() {
+    if cfg!(windows) && path.exists() {
         let _ = std::process::Command::new("explorer")
             .arg(format!("/select,\"{}\"", path.display()))
             .spawn();
@@ -676,6 +695,12 @@ pub struct CleanerApp {
     pub tray_setup_done: bool,
     /// Cached "is the Windows scheduled task registered" state.
     pub task_registered: Option<bool>,
+    /// Last tooltip text pushed to the tray icon — only set on change.
+    pub tray_tooltip: String,
+    /// Last title pushed to the window — only set on change.
+    pub window_title: String,
+    /// When the current scan/clean started — used for elapsed-time logging.
+    pub op_started: Option<Instant>,
 
     pub custom: CustomCleanerState,
     pub duplicates: DuplicateState,
@@ -722,6 +747,9 @@ impl Default for CleanerApp {
             tray: None,
             tray_setup_done: false,
             task_registered: None,
+            tray_tooltip: "Cleaner".to_string(),
+            window_title: "Cleaner".to_string(),
+            op_started: None,
             custom: CustomCleanerState::default(),
             duplicates: DuplicateState::default(),
             large_files: LargeFilesState::default(),
@@ -748,6 +776,14 @@ impl Default for CleanerApp {
         // Restore lifetime counters and user-defined clean targets.
         app.total_files_cleaned = app.settings.total_files_cleaned;
         app.total_space_freed = app.settings.total_space_freed;
+        // Restore persisted scan filters.
+        app.custom.extensions = app.settings.custom_extensions.clone();
+        app.custom.pattern = app.settings.custom_pattern.clone();
+        app.custom.older_than_days = app.settings.custom_older_than;
+        app.custom.min_size_bytes = app.settings.custom_min_size;
+        app.custom.max_size_bytes = app.settings.custom_max_size;
+        app.custom.exclude_dirs = app.settings.custom_exclude_dirs.clone();
+        app.large_files.threshold_mb = app.settings.large_threshold_mb;
         app.rebuild_custom_targets();
         app
     }
@@ -1060,8 +1096,16 @@ impl CleanerApp {
         if self.busy() {
             return;
         }
+        // Persist the current filters so they survive restarts.
+        self.settings.custom_extensions = self.custom.extensions.clone();
+        self.settings.custom_pattern = self.custom.pattern.clone();
+        self.settings.custom_older_than = self.custom.older_than_days;
+        self.settings.custom_min_size = self.custom.min_size_bytes;
+        self.settings.custom_max_size = self.custom.max_size_bytes;
+        self.settings.custom_exclude_dirs = self.custom.exclude_dirs.clone();
         self.settings.save();
         self.scanning = true;
+        self.op_started = Some(Instant::now());
         self.progress = 0.0;
         self.custom.matched_files.clear();
         self.custom.selected.clear();
@@ -1097,6 +1141,7 @@ impl CleanerApp {
         }
         self.settings.save();
         self.scanning = true;
+        self.op_started = Some(Instant::now());
         self.progress = 0.0;
         self.duplicates.groups.clear();
         self.duplicates.selected_files.clear();
@@ -1120,8 +1165,10 @@ impl CleanerApp {
         if self.busy() {
             return;
         }
+        self.settings.large_threshold_mb = self.large_files.threshold_mb;
         self.settings.save();
         self.scanning = true;
+        self.op_started = Some(Instant::now());
         self.progress = 0.0;
         self.large_files.files.clear();
         self.large_files.selected.clear();
@@ -1148,6 +1195,7 @@ impl CleanerApp {
         }
         self.settings.save();
         self.scanning = true;
+        self.op_started = Some(Instant::now());
         self.progress = 0.0;
         self.system.matched_files.clear();
         self.system.total_matched_size = 0;
@@ -1170,6 +1218,7 @@ impl CleanerApp {
         }
         self.settings.save();
         self.scanning = true;
+        self.op_started = Some(Instant::now());
         self.progress = 0.0;
         self.empty_folders.folders.clear();
         self.log.clear();
@@ -1191,6 +1240,7 @@ impl CleanerApp {
         }
         self.settings.save();
         self.scanning = true;
+        self.op_started = Some(Instant::now());
         self.progress = 0.0;
         self.folder_sizes.entries.clear();
         self.folder_sizes.total = 0;
@@ -1236,6 +1286,7 @@ impl CleanerApp {
             return;
         }
         self.cleaning = true;
+        self.op_started = Some(Instant::now());
         self.progress = 0.0;
         self.cancel_flag = Arc::new(AtomicBool::new(false));
         let (tx, rx) = mpsc::channel();
@@ -1262,6 +1313,7 @@ impl CleanerApp {
             return;
         }
         self.cleaning = true;
+        self.op_started = Some(Instant::now());
         self.progress = 0.0;
         self.cancel_flag = Arc::new(AtomicBool::new(false));
         let (tx, rx) = mpsc::channel();
@@ -1295,6 +1347,7 @@ impl CleanerApp {
             return;
         }
         self.cleaning = true;
+        self.op_started = Some(Instant::now());
         self.progress = 0.0;
         self.cancel_flag = Arc::new(AtomicBool::new(false));
         let (tx, rx) = mpsc::channel();
@@ -1468,7 +1521,12 @@ impl CleanerApp {
                     workers::WorkerMessage::Done { summary } => {
                         let was_scanning = self.scanning;
                         let was_cleaning = self.cleaning;
-                        self.add_log(&summary);
+                        let elapsed = self
+                            .op_started
+                            .take()
+                            .map(|t| format!(" (took {:.1}s)", t.elapsed().as_secs_f32()))
+                            .unwrap_or_default();
+                        self.add_log(&format!("{}{}", summary, elapsed));
                         self.status = if was_scanning {
                             "Scan complete".to_string()
                         } else {
@@ -1506,6 +1564,7 @@ impl CleanerApp {
                         self.status_toast = 120;
                         self.scanning = false;
                         self.cleaning = false;
+                        self.op_started = None;
                         still_active = false;
                     }
                     workers::WorkerMessage::Cancelled => {
@@ -1514,6 +1573,7 @@ impl CleanerApp {
                         self.status_toast = 60;
                         self.scanning = false;
                         self.cleaning = false;
+                        self.op_started = None;
                         still_active = false;
                     }
                 }
@@ -1998,6 +2058,7 @@ impl CleanerApp {
                     .id_source("dash_log")
                     .max_height(190.0)
                     .auto_shrink([false, false])
+                    .stick_to_bottom(true)
                     .show(ui, |ui| {
                         for line in &self.log[start..] {
                             ui.label(egui::RichText::new(line).monospace().small());
@@ -2007,6 +2068,9 @@ impl CleanerApp {
                 ui.horizontal(|ui| {
                     if ui.small_button("Open log file").clicked() {
                         reveal_in_explorer(&self.settings.log_path());
+                    }
+                    if ui.small_button("Copy").clicked() {
+                        ui.output_mut(|o| o.copied_text = self.log.join("\n"));
                     }
                     if ui.small_button("Clear").clicked() {
                         self.log.clear();
@@ -2125,12 +2189,23 @@ impl CleanerApp {
                         !busy && !self.custom.matched_files.is_empty(),
                         egui::Button::new("Select all"),
                     )
+                    .on_hover_text(
+                        "Select all results — respects the active filter",
+                    )
                     .clicked()
                 {
+                    let flt = self.custom.filter.to_lowercase();
                     self.custom.selected = self
                         .custom
                         .matched_files
                         .iter()
+                        .filter(|f| {
+                            flt.is_empty()
+                                || f.path
+                                    .to_string_lossy()
+                                    .to_lowercase()
+                                    .contains(&flt)
+                        })
                         .map(|f| f.path.clone())
                         .collect();
                 }
@@ -2300,7 +2375,8 @@ impl CleanerApp {
                                     selected.remove(&f.path);
                                 }
                             }
-                            ui.monospace(f.path.display().to_string());
+                            let resp = ui.monospace(f.path.display().to_string());
+                            file_row_menu(&resp, &f.path);
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
@@ -2567,12 +2643,23 @@ impl CleanerApp {
                         !busy && !self.large_files.files.is_empty(),
                         egui::Button::new("Select all"),
                     )
+                    .on_hover_text(
+                        "Select all results — respects the active filter",
+                    )
                     .clicked()
                 {
+                    let flt = self.large_files.filter.to_lowercase();
                     self.large_files.selected = self
                         .large_files
                         .files
                         .iter()
+                        .filter(|f| {
+                            flt.is_empty()
+                                || f.path
+                                    .to_string_lossy()
+                                    .to_lowercase()
+                                    .contains(&flt)
+                        })
                         .map(|f| f.path.clone())
                         .collect();
                 }
@@ -2705,7 +2792,8 @@ impl CleanerApp {
                                     selected.retain(|x| x != &f.path);
                                 }
                             }
-                            ui.monospace(f.path.display().to_string());
+                            let resp = ui.monospace(f.path.display().to_string());
+                            file_row_menu(&resp, &f.path);
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
@@ -2830,7 +2918,48 @@ impl CleanerApp {
                 helpers::human_size(self.system.total_matched_size)
             ));
             ui.add_space(4.0);
-            matched_file_rows(ui, &self.system.matched_files, "system_scroll");
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("Filter:").weak().small());
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.system.filter)
+                        .hint_text("type to filter results")
+                        .desired_width(220.0),
+                );
+                if !self.system.filter.is_empty() && ui.small_button("Clear").clicked() {
+                    self.system.filter.clear();
+                }
+                ui.separator();
+                ui.label(egui::RichText::new("Sort:").weak().small());
+                egui::ComboBox::from_id_source("system_sort")
+                    .selected_text(self.system.sort.label())
+                    .show_ui(ui, |ui| {
+                        for s in SortMode::all() {
+                            ui.selectable_value(&mut self.system.sort, *s, s.label());
+                        }
+                    });
+            });
+            ui.add_space(4.0);
+
+            let filter = self.system.filter.to_lowercase();
+            let sort = self.system.sort;
+            let mut view: Vec<(&MatchedFile, String)> = self
+                .system
+                .matched_files
+                .iter()
+                .filter(|f| {
+                    filter.is_empty()
+                        || f.path
+                            .to_string_lossy()
+                            .to_lowercase()
+                            .contains(&filter)
+                })
+                .map(|f| (f, name_key(&f.path)))
+                .collect();
+            view.sort_by(|a, b| {
+                sort.compare((a.0.size, a.1.as_str()), (b.0.size, b.1.as_str()))
+            });
+            let refs: Vec<&MatchedFile> = view.iter().map(|(f, _)| *f).collect();
+            matched_file_rows(ui, &refs, "system_scroll");
         });
     }
 
@@ -2913,7 +3042,8 @@ impl CleanerApp {
                 .auto_shrink([false, false])
                 .show_rows(ui, row_h, self.empty_folders.folders.len(), |ui, range| {
                     for f in &self.empty_folders.folders[range] {
-                        ui.monospace(f.display().to_string());
+                        let resp = ui.monospace(f.display().to_string());
+                        file_row_menu(&resp, f);
                     }
                 });
         });
@@ -3284,6 +3414,25 @@ impl eframe::App for CleanerApp {
             }
         }
 
+        // Reflect busy status in the window title and tray tooltip — only
+        // pushed when it changes.
+        let title = if self.busy() {
+            format!("Cleaner — {}", self.status)
+        } else {
+            "Cleaner".to_string()
+        };
+        if title != self.window_title {
+            self.window_title = title.clone();
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
+        }
+        let tip = self.window_title.clone();
+        if tip != self.tray_tooltip {
+            if let Some(tray) = &self.tray {
+                let _ = tray.set_tooltip(Some(tip.as_str()));
+            }
+            self.tray_tooltip = tip;
+        }
+
         // -- sidebar ----------------------------------------------------------
         egui::SidePanel::left("nav")
             .resizable(false)
@@ -3493,6 +3642,9 @@ impl eframe::App for CleanerApp {
         if self.confirm_action.is_some() {
             let mut close = false;
             let mut do_action = false;
+            if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+                close = true;
+            }
             egui::Window::new(&self.confirm_title)
                 .collapsible(false)
                 .resizable(false)

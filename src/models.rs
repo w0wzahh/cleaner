@@ -11,6 +11,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.10.0] - 2026-09-13
+### Added
+- Polish pass. Result rows are now interactive: double-click to reveal a
+  file in Explorer, right-click for Copy path / Reveal. System Cleaner
+  results got the filter + sort controls the other tabs already had,
+  and completion summaries now show how long the operation took. Busy
+  status is reflected in the window title and tray tooltip, and the
+  activity log has a Copy button.
+
+### Improved
+- Custom Clean filters and the Large Files threshold now persist across
+  restarts; "Select all" respects the active filter; Escape closes the
+  confirm dialog; the activity log sticks to the bottom as new lines
+  arrive.
+
 ## [2.9.9] - 2026-09-13
 ### Fixed
 - Seventh audit pass. Duplicates and Empty Folders finally have the
@@ -452,6 +467,10 @@ pub struct SystemCleanerState {
     pub targets: Vec<SystemCleanTarget>,
     pub matched_files: Vec<MatchedFile>,
     pub total_matched_size: u64,
+    /// Filter box text on the results list.
+    pub filter: String,
+    /// Sort order on the results list.
+    pub sort: SortMode,
 }
 
 impl Default for SystemCleanerState {
@@ -529,6 +548,8 @@ impl Default for SystemCleanerState {
             targets,
             matched_files: Vec::new(),
             total_matched_size: 0,
+            filter: String::new(),
+            sort: SortMode::default(),
         }
     }
 }
