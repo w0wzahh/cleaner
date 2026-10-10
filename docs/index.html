@@ -9,14 +9,6 @@
   <meta property="og:description" content="Open-source Windows system cleaner written in Rust. Preview before you delete — nothing is removed until you say so." />
   <meta property="og:type" content="website" />
   <link rel="icon" href="assets/icon.png" type="image/png" />
-  <script>
-    /* Applies before first paint so the native cursor never flashes. */
-    if (
-      matchMedia("(pointer: fine)").matches &&
-      !matchMedia("(prefers-reduced-motion: reduce)").matches
-    )
-      document.documentElement.className += " has-custom-cursor";
-  </script>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
