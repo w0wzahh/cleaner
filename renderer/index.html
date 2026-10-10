@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DeepSpace Cleaner</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=JetBrains+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="atmosphere"></div>
+    <main class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="dot"></span>
+          <div>
+            <p class="eyebrow">Windows Performance Toolkit</p>
+            <h1>DeepSpace Cleaner</h1>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <button id="exportBtn" class="btn btn-ghost">Export Scan JSON</button>
+          <button id="scanBtn" class="btn btn-primary">Scan My Laptop</button>
+          <button id="cleanBtn" class="btn btn-accent">Clean Selected</button>
+        </div>
+      </header>
+
+      <section class="hero-panel">
+        <article class="hero-copy">
+          <p class="subtitle">
+            Deep scan your system, clean safely by default, and switch to advanced mode only when needed.
+          </p>
+          <div class="preset-actions">
+            <button id="presetRecommendedBtn" class="btn btn-ghost">Preset: Recommended</button>
+            <button id="presetDeepBtn" class="btn btn-ghost">Preset: Deep Clean</button>
+            <button id="presetAggressiveBtn" class="btn btn-ghost">Preset: Maximum</button>
+            <button id="selectTopSpaceBtn" class="btn btn-ghost">Select Top Space Hogs</button>
+          </div>
+        </article>
+        <article class="hero-map">
+          <div class="pulse"></div>
+          <p class="map-caption">System Status</p>
+          <p id="statusText" class="map-status">Idle</p>
+        </article>
+      </section>
+
+      <section class="top-grid">
+        <article class="metric-card">
+          <h2>Scannable Junk</h2>
+          <p id="totalBytes" class="metric-value">-</p>
+        </article>
+        <article class="metric-card">
+          <h2>Detected Files</h2>
+          <p id="totalFiles" class="metric-value">-</p>
+        </article>
+        <article class="metric-card">
+          <h2>Selected Estimate</h2>
+          <p id="selectedBytes" class="metric-value">-</p>
+        </article>
+        <article class="metric-card">
+          <h2>System Drive Free (C:)</h2>
+          <p id="systemDriveFree" class="metric-value small">Loading...</p>
+        </article>
+        <article class="metric-card">
+          <h2>CPU</h2>
+          <p id="cpuInfo" class="metric-value small">-</p>
+        </article>
+        <article class="metric-card">
+          <h2>RAM Free</h2>
+          <p id="memoryInfo" class="metric-value small">-</p>
+        </article>
+      </section>
+
+      <section class="control-grid">
+        <div class="filters">
+          <label class="field">
+            <span>Search Categories</span>
+            <input id="searchInput" type="text" placeholder="cache, logs, update, browser..." />
+          </label>
+          <label class="field">
+            <span>Sort By</span>
+            <select id="sortSelect">
+              <option value="space-desc">Estimated Size (High to Low)</option>
+              <option value="space-asc">Estimated Size (Low to High)</option>
+              <option value="risk-desc">Risk (High to Low)</option>
+              <option value="title-asc">Title (A to Z)</option>
+            </select>
+          </label>
+        </div>
+        <div class="toggles">
+          <label class="toggle"><input type="checkbox" id="advancedToggle" /> Show Advanced/Risky</label>
+          <label class="toggle"><input type="checkbox" id="recycleModeToggle" /> Move deleted items to Recycle Bin (safer)</label>
+          <label class="toggle"><input type="checkbox" id="onlyDetectedToggle" /> Show only detected categories</label>
+        </div>
+        <div class="toolbar-actions">
+          <button id="selectRecommendedBtn" class="btn btn-ghost">Select Recommended</button>
+          <button id="selectVisibleBtn" class="btn btn-ghost">Select Visible</button>
+          <button id="clearSelectionBtn" class="btn btn-ghost">Clear Selection</button>
+        </div>
+      </section>
+
+      <section class="insights">
+        <article class="metric-card">
+          <h2>Top Space Hogs</h2>
+          <ol id="topWasteList" class="top-waste"></ol>
+        </article>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <h2 id="categoryCount">Cleanup Categories</h2>
+        </div>
+        <div id="categoryContainer" class="category-grid"></div>
+      </section>
+
+      <section class="log-panel">
+        <h2>Activity Log</h2>
+        <pre id="logOutput">Ready.</pre>
+      </section>
+    </main>
+
+    <script src="app.js" defer></script>
+  </body>
+</html>

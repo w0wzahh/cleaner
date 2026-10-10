@@ -1,0 +1,21 @@
+{
+  "name": "deepspace-cleaner",
+  "version": "1.0.0",
+  "description": "In-depth Windows cleaner with safe defaults and advanced options",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron ."
+  },
+  "keywords": [
+    "windows",
+    "cleaner",
+    "electron",
+    "disk-cleanup"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^31.2.0"
+  }
+}
