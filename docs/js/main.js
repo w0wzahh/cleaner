@@ -155,4 +155,264 @@
     window.addEventListener("scroll", onScroll, { passive: true });
     onScroll();
   }
+
+  /* ---------- Auto-stagger reveals ---------- */
+
+  /* Grid children without an explicit reveal-dN class get a cascade delay
+     so cards pop in one after another instead of all at once. */
+  document
+    .querySelectorAll(".card-grid, .legal-docs, .perm-grid, .dl-grid")
+    .forEach(function (group) {
+      var i = 0;
+      Array.prototype.forEach.call(group.children, function (el) {
+        if (el.classList.contains("reveal") && !/reveal-d\d/.test(el.className)) {
+          el.style.transitionDelay = Math.min(i * 70, 560) + "ms";
+        }
+        i++;
+      });
+    });
+
+  /* ---------- Magnetic buttons ---------- */
+
+  if (!reduceMotion && finePointer) {
+    document.querySelectorAll(".btn").forEach(function (btn) {
+      btn.addEventListener("mousemove", function (e) {
+        var r = btn.getBoundingClientRect();
+        var x = (e.clientX - r.left - r.width / 2) / r.width;
+        var y = (e.clientY - r.top - r.height / 2) / r.height;
+        btn.style.transform =
+          "translate(" + (x * 6).toFixed(1) + "px," + (y * 5).toFixed(1) + "px)";
+      });
+      btn.addEventListener("mouseleave", function () {
+        btn.style.transform = "";
+      });
+    });
+  }
+
+  /* ---------- Button click ripple ---------- */
+
+  document.addEventListener("click", function (e) {
+    if (reduceMotion) return;
+    var btn = e.target.closest(".btn");
+    if (!btn) return;
+    var r = btn.getBoundingClientRect();
+    var d = Math.max(r.width, r.height);
+    var s = document.createElement("span");
+    s.className = "ripple";
+    s.style.width = s.style.height = d + "px";
+    s.style.left = e.clientX - r.left - d / 2 + "px";
+    s.style.top = e.clientY - r.top - d / 2 + "px";
+    btn.appendChild(s);
+    setTimeout(function () {
+      s.remove();
+    }, 650);
+  });
+
+  /* ---------- Scroll progress + back-to-top ---------- */
+
+  var progress = document.createElement("div");
+  progress.className = "scroll-progress";
+  document.body.appendChild(progress);
+
+  var toTop = document.createElement("button");
+  toTop.className = "to-top";
+  toTop.setAttribute("aria-label", "Back to top");
+  toTop.innerHTML =
+    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>';
+  document.body.appendChild(toTop);
+  toTop.addEventListener("click", function () {
+    window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+  });
+
+  var doc = document.documentElement;
+  window.addEventListener(
+    "scroll",
+    function () {
+      var max = doc.scrollHeight - doc.clientHeight;
+      progress.style.width = (max > 0 ? (doc.scrollTop / max) * 100 : 0) + "%";
+      toTop.classList.toggle("show", doc.scrollTop > 600);
+    },
+    { passive: true }
+  );
+
+  /* ---------- Blob cursor parallax ---------- */
+
+  /* Feeds --bx/--by on <html>; CSS `translate` picks them up per-blob at
+     different depths. Independent of the keyframed `transform` drift. */
+  if (!reduceMotion && finePointer && document.querySelector(".blob")) {
+    var bmx = 0,
+      bmy = 0,
+      bcx = 0,
+      bcy = 0,
+      braf = null;
+    var blobLoop = function () {
+      bcx += (bmx - bcx) * 0.045;
+      bcy += (bmy - bcy) * 0.045;
+      doc.style.setProperty("--bx", bcx.toFixed(1) + "px");
+      doc.style.setProperty("--by", bcy.toFixed(1) + "px");
+      if (Math.abs(bmx - bcx) > 0.05 || Math.abs(bmy - bcy) > 0.05) {
+        braf = requestAnimationFrame(blobLoop);
+      } else {
+        braf = null;
+      }
+    };
+    document.addEventListener(
+      "mousemove",
+      function (e) {
+        bmx = (e.clientX / window.innerWidth - 0.5) * 46;
+        bmy = (e.clientY / window.innerHeight - 0.5) * 46;
+        if (!braf) braf = requestAnimationFrame(blobLoop);
+      },
+      { passive: true }
+    );
+  }
+
+  /* ---------- Cursor glow ---------- */
+
+  if (!reduceMotion && finePointer) {
+    var glow = document.createElement("div");
+    glow.className = "cursor-glow";
+    document.body.appendChild(glow);
+    var gx = window.innerWidth / 2,
+      gy = window.innerHeight / 2,
+      gcx = gx,
+      gcy = gy,
+      graf = null;
+    var glowLoop = function () {
+      gcx += (gx - gcx) * 0.12;
+      gcy += (gy - gcy) * 0.12;
+      glow.style.transform =
+        "translate(" + gcx.toFixed(1) + "px," + gcy.toFixed(1) + "px)";
+      if (Math.abs(gx - gcx) > 0.5 || Math.abs(gy - gcy) > 0.5) {
+        graf = requestAnimationFrame(glowLoop);
+      } else {
+        graf = null;
+      }
+    };
+    document.addEventListener(
+      "mousemove",
+      function (e) {
+        gx = e.clientX;
+        gy = e.clientY;
+        glow.classList.add("on");
+        if (!graf) graf = requestAnimationFrame(glowLoop);
+      },
+      { passive: true }
+    );
+    document.addEventListener("mouseleave", function () {
+      glow.classList.remove("on");
+    });
+  }
+
+  /* ---------- TOC scrollspy ---------- */
+
+  var tocLinks = document.querySelectorAll(".docs-toc a");
+  if (tocLinks.length && "IntersectionObserver" in window) {
+    var tocMap = {};
+    tocLinks.forEach(function (a) {
+      var href = a.getAttribute("href") || "";
+      if (href.charAt(0) === "#") tocMap[href.slice(1)] = a;
+    });
+    var spy = new IntersectionObserver(
+      function (entries) {
+        entries.forEach(function (en) {
+          if (en.isIntersecting && tocMap[en.target.id]) {
+            tocLinks.forEach(function (a) {
+              a.classList.remove("toc-active");
+            });
+            tocMap[en.target.id].classList.add("toc-active");
+          }
+        });
+      },
+      { rootMargin: "-18% 0px -72% 0px" }
+    );
+    document
+      .querySelectorAll(".legal-sec[id], .docs-content section[id]")
+      .forEach(function (s) {
+        if (tocMap[s.id]) spy.observe(s);
+      });
+  }
+
+  /* ---------- Custom cursor ---------- */
+
+  /* SVG dot + trailing ring. The ring lags behind at a slower lerp so it
+     feels like it has weight; mix-blend-mode: difference auto-inverts it
+     over the white primary buttons. Precise pointers only — touch and
+     reduced-motion keep the native cursor. */
+  if (!reduceMotion && finePointer) {
+    doc.classList.add("has-custom-cursor");
+
+    var cDot = document.createElement("div");
+    cDot.className = "cursor-dot";
+    cDot.innerHTML =
+      '<svg viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" fill="#ffffff"/></svg>';
+
+    var cRing = document.createElement("div");
+    cRing.className = "cursor-ring";
+    cRing.innerHTML =
+      '<svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="17" fill="rgba(255,255,255,0.07)" stroke="#ffffff" stroke-width="1.4"/></svg>';
+
+    document.body.appendChild(cDot);
+    document.body.appendChild(cRing);
+
+    var HOVER_SEL =
+      "a, button, .btn, .card, .legal-doc, .dl-card, label, summary, input, textarea, select, [role='button']";
+
+    var pmx = 0,
+      pmy = 0,
+      dcx = 0,
+      dcy = 0,
+      rcx = 0,
+      rcy = 0,
+      curShown = false;
+
+    var cursorLoop = function () {
+      dcx += (pmx - dcx) * 0.35;
+      dcy += (pmy - dcy) * 0.35;
+      rcx += (pmx - rcx) * 0.16;
+      rcy += (pmy - rcy) * 0.16;
+      cDot.style.transform =
+        "translate(" + dcx.toFixed(1) + "px," + dcy.toFixed(1) + "px)";
+      cRing.style.transform =
+        "translate(" + rcx.toFixed(1) + "px," + rcy.toFixed(1) + "px)";
+      requestAnimationFrame(cursorLoop);
+    };
+
+    document.addEventListener(
+      "mousemove",
+      function (e) {
+        pmx = e.clientX;
+        pmy = e.clientY;
+        if (!curShown) {
+          curShown = true;
+          dcx = rcx = pmx;
+          dcy = rcy = pmy;
+          cDot.classList.add("on");
+          cRing.classList.add("on");
+          requestAnimationFrame(cursorLoop);
+        }
+        var hov = !!e.target.closest(HOVER_SEL);
+        cRing.classList.toggle("hov", hov);
+        cDot.classList.toggle("hov", hov);
+      },
+      { passive: true }
+    );
+
+    document.addEventListener("mousedown", function () {
+      cRing.classList.add("down");
+    });
+    document.addEventListener("mouseup", function () {
+      cRing.classList.remove("down");
+    });
+    document.addEventListener("mouseleave", function () {
+      cDot.classList.remove("on");
+      cRing.classList.remove("on");
+    });
+    document.addEventListener("mouseenter", function () {
+      if (curShown) {
+        cDot.classList.add("on");
+        cRing.classList.add("on");
+      }
+    });
+  }
 })();

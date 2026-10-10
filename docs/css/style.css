@@ -59,6 +59,12 @@ body {
   min-height: 100vh;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
+  animation: page-in 0.5s ease both;
+}
+
+@keyframes page-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 img {
@@ -125,6 +131,7 @@ a:hover {
   left: -8%;
   background: radial-gradient(circle, rgba(255, 255, 255, 0.16), transparent 65%);
   animation: drift-1 26s ease-in-out infinite alternate;
+  translate: var(--bx, 0px) var(--by, 0px);
 }
 
 .blob-2 {
@@ -136,6 +143,7 @@ a:hover {
   right: -10%;
   background: radial-gradient(circle, rgba(255, 255, 255, 0.12), transparent 65%);
   animation: drift-2 32s ease-in-out infinite alternate;
+  translate: calc(var(--bx, 0px) * -0.6) calc(var(--by, 0px) * -0.6);
 }
 
 .blob-3 {
@@ -147,6 +155,7 @@ a:hover {
   left: 28%;
   background: radial-gradient(circle, rgba(255, 255, 255, 0.09), transparent 65%);
   animation: drift-3 38s ease-in-out infinite alternate;
+  translate: calc(var(--bx, 0px) * 0.45) calc(var(--by, 0px) * 0.45);
 }
 
 @keyframes drift-1 {
@@ -751,6 +760,25 @@ a:hover {
   text-transform: uppercase;
   color: var(--accent);
   margin-bottom: 14px;
+  position: relative;
+  padding-bottom: 7px;
+}
+
+.sec-kicker::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 1px;
+  width: 0;
+  background: linear-gradient(90deg, var(--accent), transparent);
+  transition: width 0.8s var(--ease-out) 0.3s;
+}
+
+.sec-head.visible .sec-kicker::after,
+.reveal.visible > .sec-kicker::after,
+.reveal.visible .sec-kicker::after {
+  width: 100%;
 }
 
 .sec-head h2 {
@@ -1625,7 +1653,7 @@ td code {
 
 .reveal {
   opacity: 0;
-  transform: translateY(30px);
+  transform: translateY(30px) scale(0.985);
   transition: opacity 0.8s var(--ease-out), transform 0.8s var(--ease-out);
 }
 
@@ -1640,6 +1668,183 @@ td code {
 .reveal-d4 { transition-delay: 0.32s; }
 .reveal-d5 { transition-delay: 0.4s; }
 .reveal-d6 { transition-delay: 0.48s; }
+
+/* ---------- Polish: progress, cursor, ripples ---------- */
+
+/* Scroll progress bar */
+.scroll-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 2px;
+  width: 0;
+  background: linear-gradient(90deg, var(--accent-2), var(--accent));
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.55);
+  z-index: 210;
+  pointer-events: none;
+}
+
+/* Cursor glow — a soft light that trails the mouse */
+.cursor-glow {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 540px;
+  height: 540px;
+  margin: -270px 0 0 -270px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 1;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.06), transparent 62%);
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+.cursor-glow.on {
+  opacity: 1;
+}
+
+/* Button click ripple */
+.ripple {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+  transform: scale(0);
+  pointer-events: none;
+  animation: ripple 0.6s ease-out forwards;
+}
+
+.btn-primary .ripple {
+  background: rgba(0, 0, 0, 0.16);
+}
+
+@keyframes ripple {
+  to {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+/* Scrollspy — active TOC entry */
+.docs-toc a {
+  transition: color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.docs-toc a.toc-active {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.09);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* Table row hover */
+tbody tr {
+  transition: background 0.2s ease;
+}
+
+tbody tr:hover {
+  background: rgba(255, 255, 255, 0.045);
+}
+
+/* ---------- Custom cursor ---------- */
+
+/* Enabled only on precise pointers via JS (html.has-custom-cursor). */
+html.has-custom-cursor,
+html.has-custom-cursor * {
+  cursor: none !important;
+}
+
+.cursor-dot,
+.cursor-ring {
+  position: fixed;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 300;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  mix-blend-mode: difference;
+  will-change: transform;
+}
+
+.cursor-dot {
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+}
+
+.cursor-ring {
+  width: 40px;
+  height: 40px;
+  margin: -20px 0 0 -20px;
+}
+
+.cursor-dot svg,
+.cursor-ring svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: center;
+  transition: transform 0.25s var(--ease-out);
+}
+
+.cursor-dot.on,
+.cursor-ring.on {
+  opacity: 1;
+}
+
+/* Interactive targets: ring opens up, dot tucks away */
+.cursor-ring.hov svg {
+  transform: scale(1.55);
+}
+
+.cursor-dot.hov svg {
+  transform: scale(0.45);
+}
+
+/* Press feedback */
+.cursor-ring.down svg {
+  transform: scale(0.8);
+}
+
+.cursor-ring.hov.down svg {
+  transform: scale(1.3);
+}
+
+/* Back-to-top fab */
+.to-top {
+  position: fixed;
+  right: 26px;
+  bottom: 26px;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--glass-border);
+  color: var(--text-dim);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(16px) scale(0.9);
+  pointer-events: none;
+  transition: all 0.35s var(--ease-out);
+  z-index: 120;
+}
+
+.to-top.show {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+.to-top:hover {
+  color: var(--text);
+  border-color: var(--glass-border-bright);
+  transform: translateY(-3px);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
+}
 
 /* ---------- Responsive ---------- */
 
