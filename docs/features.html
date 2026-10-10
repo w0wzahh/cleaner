@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Features — Cleaner</title>
+  <meta name="description" content="Everything Cleaner can do: custom clean, parallel duplicate detection, large file finder, system cleaner, scheduled scans, system tray, and a full CLI — all with safety-first defaults." />
+  <link rel="icon" href="assets/icon.png" type="image/png" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="bg-scene" aria-hidden="true">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+    <div class="bg-grid"></div>
+  </div>
+
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="index.html" class="brand">
+        <img src="assets/icon.png" alt="Cleaner logo" width="30" height="30" />
+        Cleaner
+      </a>
+      <ul class="nav-links" id="nav-links">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="features.html">Features</a></li>
+
+        <li><a href="docs.html">Docs</a></li>
+        <li><a href="license.html">License</a></li>
+        <li class="nav-sep" aria-hidden="true"></li>
+        <li class="nav-ext"><a href="https://github.com/w0wzahh/cleaner" target="_blank" rel="noopener">GitHub</a></li>
+        <li class="nav-ext"><a href="https://ko-fi.com/w0wzahh" target="_blank" rel="noopener">Ko-fi</a></li>
+      </ul>
+      <div class="nav-actions">
+        <a class="btn btn-ghost btn-sm" href="https://github.com/w0wzahh/cleaner" target="_blank" rel="noopener">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+          GitHub
+        </a>
+        <a class="btn btn-kofi btn-sm" href="https://ko-fi.com/w0wzahh" target="_blank" rel="noopener">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+          Ko-fi
+        </a>
+      </div>
+      <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+    </div>
+  </nav>
+
+  <main>
+    <section class="page-hero container">
+      <span class="hero-badge reveal"><span class="dot"></span>Full feature list</span>
+      <h1 class="reveal reveal-d1">Everything a cleaner <span class="grad-text">should do</span></h1>
+      <p class="reveal reveal-d2">
+        Seven focused tools, a scheduling engine, a tray mode, and a CLI for
+        scripting — wrapped in an interface that animates instead of snapping.
+      </p>
+    </section>
+
+    <!-- ============ CLEANING TOOLS ============ -->
+    <section class="section-sm container" id="cleaning-tools">
+      <div class="sec-head reveal">
+        <span class="sec-kicker">Cleaning tools</span>
+        <h2>Find the junk, <span class="grad-text">wherever it hides</span></h2>
+      </div>
+      <div class="card-grid">
+        <div class="card glass reveal">
+          <div class="card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+          </div>
+          <h3>Custom Clean</h3>
+          <p>Point it at any folder and filter by extension, glob pattern, age, or size. Recursive and hidden-file toggles included. Full preview before anything is touched.</p>
+        </div>
+        <div class="card glass reveal reveal-d1">
+          <div class="card-icon cool">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          </div>
+          <h3>Duplicate Finder</h3>
+          <p>Groups files by size, fingerprints with xxh3 (first 8&nbsp;KB + last 4&nbsp;KB + size), and only runs a full BLAKE3 hash when it has to &mdash; all in parallel across every CPU core. A 12,000-file folder with 6,000 duplicate groups scans in well under a second.</p>
+        </div>
+        <div class="card glass reveal reveal-d2">
+          <div class="card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="12" x2="2" y2="12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" y1="16" x2="6.01" y2="16"/><line x1="10" y1="16" x2="10.01" y2="16"/></svg>
+          </div>
+          <h3>System Cleaner</h3>
+          <p>Temp folders, app caches, browser caches (Chrome, Edge, Firefox), and the Windows thumbnail cache. Pick which targets are in scope &mdash; and add your own.</p>
+        </div>
+        <div class="card glass reveal">
+          <div class="card-icon cool">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          </div>
+          <h3>Large File Finder</h3>
+          <p>Everything above a size you pick, sorted biggest first, with one-click reveal in Explorer so you can eyeball it before deciding.</p>
+        </div>
+        <div class="card glass reveal reveal-d1">
+          <div class="card-icon green">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <h3>Empty Folder Cleaner</h3>
+          <p>Finds empty directories &mdash; including ones that only become empty once their children are removed.</p>
+        </div>
+        <div class="card glass reveal reveal-d2">
+          <div class="card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+          </div>
+          <h3>Folder Sizes &amp; Storage Overview</h3>
+          <p>Ranks a folder's subfolders by total size, plus per-drive usage bars so you can see exactly where the space went.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ POWER FEATURES ============ -->
+    <section class="section container" id="power-features">
+      <div class="sec-head reveal">
+        <span class="sec-kicker">Power features</span>
+        <h2>Set it, <span class="grad-text">forget it, script it</span></h2>
+      </div>
+      <div class="card-grid">
+        <div class="card glass reveal">
+          <div class="card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <h3>Scheduled Scans</h3>
+          <p>Run a scan every hour, 6/12/24 hours, or weekly while the app is open &mdash; with optional auto-clean afterwards. Can also register a Windows Task Scheduler entry so scans run even when the app is closed.</p>
+        </div>
+        <div class="card glass reveal reveal-d1">
+          <div class="card-icon cool">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 13 12 18 17 13"/><polyline points="7 6 12 11 17 6"/></svg>
+          </div>
+          <h3>System Tray Mode</h3>
+          <p>&ldquo;To tray&rdquo; hides the window while Cleaner keeps running its schedule in the background. Double-click the icon to bring it back.</p>
+        </div>
+        <div class="card glass reveal reveal-d2">
+          <div class="card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+          </div>
+          <h3>Full Command Line</h3>
+          <p><code class="inline">cleaner scan-custom &lt;dir&gt;</code>, <code class="inline">cleaner clean-system --yes</code> and friends, for scripting or Task Scheduler. See the <a href="docs.html#cli">CLI reference</a>.</p>
+        </div>
+        <div class="card glass reveal">
+          <div class="card-icon green">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          </div>
+          <h3>Sortable Results &amp; Reports</h3>
+          <p>Order results by size or name on the Custom Clean, Duplicates, and Large Files tabs, and export a report of any scan to keep for your records.</p>
+        </div>
+        <div class="card glass reveal reveal-d1">
+          <div class="card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+          </div>
+          <h3>Six Animated Themes</h3>
+          <p>Midnight, Dark, Light, Nord, Dracula, and Solarized &mdash; and switching between them animates instead of snapping.</p>
+        </div>
+        <div class="card glass reveal reveal-d2">
+          <div class="card-icon cool">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </div>
+          <h3>Zero Network Calls</h3>
+          <p>No telemetry, no analytics, no accounts, no update pings. Cleaner literally never opens a socket &mdash; verify it yourself, the source is on <a href="https://github.com/w0wzahh/cleaner" target="_blank" rel="noopener">GitHub</a>.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SAFETY ============ -->
+    <section class="section container" id="safety">
+      <div class="sec-head reveal">
+        <span class="sec-kicker">Safety</span>
+        <h2>Destructive, <span class="grad-text">only when you mean it</span></h2>
+      </div>
+      <div class="card-grid cols-2">
+        <div class="card glass reveal">
+          <div class="card-icon green">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </div>
+          <h3>Dry run &amp; recycle bin by default</h3>
+          <p>Out of the box, scans only preview matches and deletion goes to the recycle bin. Permanent delete and secure erase are strictly opt-in, and every clean asks for confirmation first.</p>
+        </div>
+        <div class="card glass reveal reveal-d1">
+          <div class="card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <h3>Protected paths &amp; history log</h3>
+          <p>A protected-paths list that's never scanned or deleted, optional 3-pass secure erase for files you really want gone, and a persistent log that records every operation.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ CTA ============ -->
+    <section class="section container">
+      <div class="cta-panel glass reveal">
+        <h2>Ready to <span class="grad-text">clean house?</span></h2>
+        <p>Grab the installer or the portable zip &mdash; takes under a minute either way.</p>
+        <div class="cta-actions">
+          <a href="https://github.com/w0wzahh/cleaner/releases/download/v2.12.3/Cleaner-Setup-2.12.3.exe" data-dl="installer" class="btn btn-primary" download>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download
+          </a>
+          <a href="docs.html" class="btn btn-glass">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+            Read the docs
+          </a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <img src="assets/icon.png" alt="Cleaner logo" width="34" height="34" />
+          <p>A fast, safe system cleaner for Windows, written in Rust. Open source under the MIT License.</p>
+        </div>
+        <div>
+          <h4>Product</h4>
+          <ul>
+            <li><a href="features.html">Features</a></li>
+
+            <li><a href="docs.html">Documentation</a></li>
+            <li><a href="https://github.com/w0wzahh/cleaner/releases" target="_blank" rel="noopener">Releases</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Legal</h4>
+          <ul>
+            <li><a href="license.html">MIT License</a></li>
+            <li><a href="privacy.html">Privacy Policy</a></li>
+            <li><a href="terms.html">Terms &amp; Disclaimer</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Community</h4>
+          <ul>
+            <li><a href="https://github.com/w0wzahh/cleaner" target="_blank" rel="noopener">GitHub</a></li>
+            <li><a href="https://github.com/w0wzahh/cleaner/issues" target="_blank" rel="noopener">Report an issue</a></li>
+            <li><a href="https://ko-fi.com/w0wzahh" target="_blank" rel="noopener">Ko-fi</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>&copy; 2026 0xEmre &middot; Licensed under the <a href="license.html">MIT License</a></span>
+        <div class="footer-social">
+          <a href="https://github.com/w0wzahh/cleaner" target="_blank" rel="noopener" aria-label="GitHub">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+          </a>
+          <a href="https://ko-fi.com/w0wzahh" target="_blank" rel="noopener" class="kofi" aria-label="Ko-fi">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+          </a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="js/main.js"></script>
+</body>
+</html>
