@@ -366,6 +366,20 @@
       rcy = 0,
       curShown = false;
 
+    /* Restore the position saved by the previous page so the cursor is
+       already where the pointer is — no "pop in on first move". */
+    var saved = null;
+    try {
+      saved = JSON.parse(sessionStorage.getItem("cursor-pos"));
+    } catch (e) {}
+    if (saved && typeof saved.x === "number" && typeof saved.y === "number") {
+      pmx = dcx = rcx = saved.x;
+      pmy = dcy = rcy = saved.y;
+      curShown = true;
+      cDot.classList.add("on");
+      cRing.classList.add("on");
+    }
+
     var cursorLoop = function () {
       dcx += (pmx - dcx) * 0.35;
       dcy += (pmy - dcy) * 0.35;
@@ -378,6 +392,9 @@
       requestAnimationFrame(cursorLoop);
     };
 
+    if (curShown) requestAnimationFrame(cursorLoop);
+
+    var lastSave = 0;
     document.addEventListener(
       "mousemove",
       function (e) {
@@ -394,6 +411,15 @@
         var hov = !!e.target.closest(HOVER_SEL);
         cRing.classList.toggle("hov", hov);
         cDot.classList.toggle("hov", hov);
+        if (e.timeStamp - lastSave > 80) {
+          lastSave = e.timeStamp;
+          try {
+            sessionStorage.setItem(
+              "cursor-pos",
+              JSON.stringify({ x: pmx, y: pmy })
+            );
+          } catch (err) {}
+        }
       },
       { passive: true }
     );

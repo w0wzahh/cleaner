@@ -6,6 +6,14 @@
   <title>License — Cleaner</title>
   <meta name="description" content="Cleaner is free and open source under the MIT License. Read the full license text and third-party attributions." />
   <link rel="icon" href="assets/icon.png" type="image/png" />
+  <script>
+    /* Applies before first paint so the native cursor never flashes. */
+    if (
+      matchMedia("(pointer: fine)").matches &&
+      !matchMedia("(prefers-reduced-motion: reduce)").matches
+    )
+      document.documentElement.className += " has-custom-cursor";
+  </script>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>

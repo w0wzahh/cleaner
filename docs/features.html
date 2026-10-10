@@ -6,6 +6,14 @@
   <title>Features — Cleaner</title>
   <meta name="description" content="Everything Cleaner can do: custom clean, parallel duplicate detection, large file finder, system cleaner, scheduled scans, system tray, and a full CLI — all with safety-first defaults." />
   <link rel="icon" href="assets/icon.png" type="image/png" />
+  <script>
+    /* Applies before first paint so the native cursor never flashes. */
+    if (
+      matchMedia("(pointer: fine)").matches &&
+      !matchMedia("(prefers-reduced-motion: reduce)").matches
+    )
+      document.documentElement.className += " has-custom-cursor";
+  </script>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>

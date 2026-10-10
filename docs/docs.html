@@ -6,6 +6,14 @@
   <title>Documentation — Cleaner</title>
   <meta name="description" content="Cleaner documentation: quick start, safety model, command-line reference, settings, and data file locations." />
   <link rel="icon" href="assets/icon.png" type="image/png" />
+  <script>
+    /* Applies before first paint so the native cursor never flashes. */
+    if (
+      matchMedia("(pointer: fine)").matches &&
+      !matchMedia("(prefers-reduced-motion: reduce)").matches
+    )
+      document.documentElement.className += " has-custom-cursor";
+  </script>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>

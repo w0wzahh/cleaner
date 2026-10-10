@@ -6,6 +6,14 @@
   <title>Terms &amp; Disclaimer — Cleaner</title>
   <meta name="description" content="Terms of use and disclaimer for Cleaner — a file-deletion tool provided as-is under the MIT License. Understand the risks before you clean." />
   <link rel="icon" href="assets/icon.png" type="image/png" />
+  <script>
+    /* Applies before first paint so the native cursor never flashes. */
+    if (
+      matchMedia("(pointer: fine)").matches &&
+      !matchMedia("(prefers-reduced-motion: reduce)").matches
+    )
+      document.documentElement.className += " has-custom-cursor";
+  </script>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
