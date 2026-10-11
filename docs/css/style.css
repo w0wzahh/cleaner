@@ -69,10 +69,12 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; }
   transform-origin: 0 50%; transform: scaleX(0);
 }
 
-/* custom cursor */
+/* custom cursor — transform-origin pinned at the arrow tip (7,5 in the
+   SVG) so hover/down scaling never shifts the hotspot */
 #cursor {
   position: fixed; top: 0; left: 0; z-index: 9999;
   pointer-events: none;
+  transform-origin: 7px 5px;
   transition: scale .12s ease;
 }
 #cursor .arrow { fill: var(--main); }
@@ -80,6 +82,16 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; }
 #cursor.hover .arrow { fill: var(--chart-3); }
 #cursor.down { scale: .82; }
 body.has-cursor, body.has-cursor * { cursor: none !important; }
+
+/* Interactive elements translate 4px on hover — without a stable hitbox the
+   pointer can slip off the moved edge and flicker the hover state, which also
+   makes the custom cursor pulse. An invisible ::before keeps the hit area
+   fixed while only the visual moves. */
+.btn, .nav-pill, .logo, .nav-toggle, .footer-social a, .legal-foot a { position: relative; }
+.btn::before, .nav-pill::before, .logo::before, .nav-toggle::before,
+.footer-social a::before, .legal-foot a::before {
+  content: ""; position: absolute; inset: -10px;
+}
 
 /* ---------- navbar — sticky bar, same as w0wzahh.link ---------- */
 .navbar {
@@ -284,7 +296,7 @@ h1 .fill {
 .marquee-track i { font-style: normal; color: var(--chart-3); }
 
 /* ---------- sections ---------- */
-section { padding: 72px 0; }
+section { padding: 84px 0; }
 .sec-head { margin-bottom: 40px; }
 .sec-kicker {
   display: inline-block;

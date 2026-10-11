@@ -34,7 +34,7 @@
     (function follow() {
       cx += (tx - cx) * 0.24;
       cy += (ty - cy) * 0.24;
-      cur.style.transform = `translate(${cx - 3}px, ${cy - 3}px)`;
+      cur.style.transform = `translate(${cx - 7}px, ${cy - 5}px)`;
       requestAnimationFrame(follow);
     })();
   }
