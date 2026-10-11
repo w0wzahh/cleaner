@@ -4,274 +4,169 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Privacy Policy — Cleaner</title>
-  <meta name="description" content="Cleaner collects nothing. Zero telemetry, zero analytics, zero network calls — read the privacy policy." />
+  <meta name="description" content="Cleaner collects nothing, sends nothing, and accounts for nothing. The app never opens a network connection — here's the slightly longer version." />
+  <link rel="canonical" href="https://cleaner.w0wzahh.link/privacy.html" />
   <link rel="icon" href="assets/icon.png" type="image/png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700;800&family=Lexend+Mega:wght@700;800&family=Space+Mono:wght@400;700&family=Caveat:wght@600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
-  <div class="bg-scene" aria-hidden="true">
-    <div class="blob blob-1"></div>
-    <div class="blob blob-2"></div>
-    <div class="blob blob-3"></div>
-    <div class="bg-grid"></div>
-  </div>
+  <div id="progressbar" aria-hidden="true"></div>
 
-  <nav class="nav">
-    <div class="nav-inner">
-      <a href="index.html" class="brand">
-        <img src="assets/icon.png" alt="Cleaner logo" width="30" height="30" />
-        Cleaner
-      </a>
+  <nav class="navbar">
+    <div class="navbar-inner">
+      <span class="logo-wrap"><a class="logo" href="index.html"><img src="assets/icon.png" alt="" width="20" height="20" />CLEANER<span class="tld">.</span></a></span>
       <ul class="nav-links" id="nav-links">
-        <li><a href="index.html">Home</a></li>
-        <li><a href="features.html">Features</a></li>
-
-        <li><a href="docs.html">Docs</a></li>
-        <li><a href="license.html">License</a></li>
-        <li class="nav-sep" aria-hidden="true"></li>
-        <li class="nav-ext"><a href="https://github.com/w0wzahh/cleaner" target="_blank" rel="noopener">GitHub</a></li>
-        <li class="nav-ext"><a href="https://ko-fi.com/w0wzahh" target="_blank" rel="noopener">Ko-fi</a></li>
+        <li><a class="nav-pill" href="index.html">Home</a></li>
+        <li><a class="nav-pill" href="features.html">Features</a></li>
+        <li><a class="nav-pill" href="docs.html">Docs</a></li>
+        <li><a class="nav-pill" href="license.html">License</a></li>
+        <li><a class="nav-pill ext" href="https://github.com/w0wzahh/cleaner" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+          GitHub</a></li>
+        <li><a class="nav-pill ext" href="https://ko-fi.com/w0wzahh" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+          Ko-fi</a></li>
       </ul>
-      <div class="nav-actions">
-        <a class="btn btn-ghost btn-sm" href="https://github.com/w0wzahh/cleaner" target="_blank" rel="noopener">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
-          GitHub
-        </a>
-        <a class="btn btn-kofi btn-sm" href="https://ko-fi.com/w0wzahh" target="_blank" rel="noopener">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
-          Ko-fi
-        </a>
-      </div>
-      <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-      </button>
+      <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false">≡</button>
     </div>
   </nav>
 
   <main>
-    <section class="page-hero container">
-      <span class="hero-badge reveal"><span class="dot"></span>Legal</span>
-      <h1 class="reveal reveal-d1">Privacy <span class="grad-text">Policy</span></h1>
-      <p class="reveal reveal-d2">
-        The short version: Cleaner collects nothing, sends nothing, and
-        accounts for nothing. Here's the slightly longer version.
-      </p>
-    </section>
+    <div class="wrap page-hero">
+      <span class="chip"><span class="dot"></span>Legal</span>
+      <h1>Privacy <span class="fill">Policy</span></h1>
+      <p>The short version: Cleaner collects nothing, sends nothing, and
+        accounts for nothing. Here's the slightly longer version.</p>
+    </div>
 
-    <section class="section-sm container">
-      <!-- Document switcher -->
-      <div class="legal-docs reveal">
-        <a href="license.html" class="legal-doc glass">
-          <span class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></span>
-          <div>
-            <h3>MIT License</h3>
-            <p>What you may do with the code</p>
-          </div>
-          <svg class="arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-        </a>
-        <a href="privacy.html" class="legal-doc glass current" aria-current="page">
-          <span class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
-          <div>
-            <h3>Privacy Policy</h3>
-            <p>What we collect &mdash; nothing</p>
-          </div>
-          <svg class="arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-        </a>
-        <a href="terms.html" class="legal-doc glass">
-          <span class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>
-          <div>
-            <h3>Terms of Use</h3>
-            <p>Risks &amp; responsibilities</p>
-          </div>
-          <svg class="arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-        </a>
-      </div>
+    <div class="wrap legal-layout">
+      <aside class="legal-side">
+        <nav class="legal-nav">
+          <h4>Legal</h4>
+          <a href="license.html">MIT License<small>What you may do with the code</small></a>
+          <a href="privacy.html" class="active">Privacy Policy<small>What we collect — nothing</small></a>
+          <a href="terms.html">Terms of Use<small>Risks &amp; responsibilities</small></a>
+        </nav>
+        <div class="doc-meta">
+          <h4>Document</h4>
+          <dl>
+            <dt>Document</dt><dd>Privacy Policy</dd>
+            <dt>Last updated</dt><dd>October 2026</dd>
+            <dt>Applies to</dt><dd>Cleaner app &amp; this website</dd>
+            <dt>Contact</dt><dd><a href="https://github.com/w0wzahh/cleaner/issues" target="_blank" rel="noopener">GitHub Issues</a></dd>
+          </dl>
+        </div>
+      </aside>
 
-      <!-- Document metadata -->
-      <div class="legal-meta glass reveal">
-        <div><span>Document</span><strong>Privacy Policy</strong></div>
-        <div><span>Last updated</span><strong>October 2026</strong></div>
-        <div><span>Applies to</span><strong>Cleaner app &amp; this website</strong></div>
-        <div><span>Contact</span><strong><a href="https://github.com/w0wzahh/cleaner/issues" target="_blank" rel="noopener">GitHub Issues</a></strong></div>
-      </div>
+      <div>
+        <div class="summary-box">
+          <span class="tape tl"></span>
+          <span class="tag">Plain-English summary — not legal text</span>
+          <p>The app collects nothing and sends nothing. It never opens a
+            network connection. This website is a set of static pages with no
+            cookies and no trackers &mdash; its only optional request is a
+            read-only call to GitHub's API to keep the download buttons current.</p>
+        </div>
 
-      <!-- Plain-language summary -->
-      <div class="legal-tldr reveal">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-        <p>
-          <span class="tldr-tag">Plain-English summary &mdash; not legal text</span>
-          <strong>The app collects nothing and sends nothing.</strong> It never
-          opens a network connection. This website is a set of static pages with
-          no cookies and no trackers &mdash; its only optional request is a
-          read-only call to GitHub's API to keep the download buttons current.
-        </p>
-      </div>
+        <section class="legal-sec" id="collection">
+          <span class="sec-num">01</span>
+          <h2>Data collection by the application <a href="#collection">#</a></h2>
+          <p>Cleaner makes <strong>zero network calls</strong>. It contains no
+            telemetry, no analytics, no crash reporters, no advertising
+            identifiers, and no accounts. The application does not collect,
+            transmit, store remotely, or share any personal data — it can't,
+            because it never opens a network connection.</p>
+          <p>You don't have to take our word for it: the entire source code is
+            published at
+            <a href="https://github.com/w0wzahh/cleaner" target="_blank" rel="noopener">github.com/w0wzahh/cleaner</a>
+            and can be audited by anyone, at any time.</p>
+        </section>
 
-      <div class="docs-layout">
-        <aside class="docs-toc glass reveal">
-          <h4>Contents</h4>
+        <section class="legal-sec" id="local">
+          <span class="sec-num">02</span>
+          <h2>Data stored locally <a href="#local">#</a></h2>
+          <p>Cleaner stores a small number of files on your own machine so it can do its job:</p>
           <ul>
-            <li><a href="#data-collection">Data collection</a></li>
-            <li><a href="#local-data">Local data</a></li>
-            <li><a href="#website">This website</a></li>
-            <li><a href="#third-party">Third-party services</a></li>
-            <li><a href="#children">Children's privacy</a></li>
-            <li><a href="#changes">Changes</a></li>
-            <li><a href="#contact">Contact</a></li>
+            <li><code class="inline">cleaner_settings.json</code> — your preferences (theme, filters, protected paths).</li>
+            <li><code class="inline">cleaner_history.log</code> — a persistent record of every scan and clean operation.</li>
+            <li><code class="inline">reports\</code> — scan reports you choose to export.</li>
           </ul>
-        </aside>
+          <p>These files live next to the executable (or in
+            <code class="inline">%APPDATA%\Cleaner\</code> when that folder is
+            read-only). They never leave your device and are only read or written
+            by Cleaner itself. Uninstalling and choosing "delete the data folder"
+            removes them completely.</p>
+        </section>
 
-        <div class="legal-content">
-          <section class="legal-sec glass reveal" id="data-collection">
-            <h2><span class="num">01</span>Data collection by the application<a class="anchor" href="#data-collection" aria-label="Link to this section">#</a></h2>
-            <p>
-              Cleaner makes <strong>zero network calls</strong>. It contains no
-              telemetry, no analytics, no crash reporters, no advertising
-              identifiers, and no accounts. The application does not collect,
-              transmit, store remotely, or share any personal data &mdash; it can't,
-              because it never opens a network connection.
-            </p>
-            <p>
-              You don't have to take our word for it: the entire source code is
-              published at
-              <a href="https://github.com/w0wzahh/cleaner" target="_blank" rel="noopener">github.com/w0wzahh/cleaner</a>
-              and can be audited by anyone, at any time.
-            </p>
-          </section>
+        <section class="legal-sec" id="website">
+          <span class="sec-num">03</span>
+          <h2>This website <a href="#website">#</a></h2>
+          <p>This website is a set of static pages. It sets no cookies, runs no
+            analytics, and collects no information about you. Display type is
+            served by Google Fonts; no other third-party resources are loaded.</p>
+          <p>The only optional request it makes: the download buttons may query
+            GitHub's public Releases API
+            (<code class="inline">api.github.com</code>) once, read-only and
+            unauthenticated, to keep the links pointed at the newest release.
+            Nothing is sent beyond the request itself, and if it fails the
+            buttons fall back to a pinned release URL.</p>
+        </section>
 
-          <section class="legal-sec glass reveal" id="local-data">
-            <h2><span class="num">02</span>Data stored locally<a class="anchor" href="#local-data" aria-label="Link to this section">#</a></h2>
-            <p>
-              Cleaner stores a small number of files on your own machine so it can
-              do its job:
-            </p>
-            <ul>
-              <li><code class="inline">cleaner_settings.json</code> &mdash; your preferences (theme, filters, protected paths).</li>
-              <li><code class="inline">cleaner_history.log</code> &mdash; a persistent record of every scan and clean operation.</li>
-              <li><code class="inline">reports\</code> &mdash; scan reports you choose to export.</li>
-            </ul>
-            <p>
-              These files live next to the executable (or in
-              <code class="inline">%APPDATA%\Cleaner\</code> when that folder is
-              read-only). They never leave your device and are only read or written
-              by Cleaner itself. Uninstalling and choosing "delete the data folder"
-              removes them completely.
-            </p>
-          </section>
+        <section class="legal-sec" id="third-party">
+          <span class="sec-num">04</span>
+          <h2>Third-party services <a href="#third-party">#</a></h2>
+          <p>Links on this site point to services operated by third parties with their own privacy policies:</p>
+          <ul>
+            <li><strong>GitHub</strong> (github.com) — source hosting, releases, and issue tracking.</li>
+            <li><strong>Ko-fi</strong> (ko-fi.com) — optional donations.</li>
+            <li><strong>Google Fonts</strong> (fonts.googleapis.com) — display typography on this website.</li>
+          </ul>
+          <p>If you visit those services, their own policies apply. Cleaner and
+            this website receive no data back from them.</p>
+        </section>
 
-          <section class="legal-sec glass reveal" id="website">
-            <h2><span class="num">03</span>This website<a class="anchor" href="#website" aria-label="Link to this section">#</a></h2>
-            <p>
-              This website is a set of static pages. It sets no cookies, runs no
-              analytics, loads no third-party trackers or fonts, and collects no
-              information about you.
-            </p>
-            <p>
-              The only optional request it makes: the download buttons may query
-              GitHub's public Releases API (<code class="inline">api.github.com</code>)
-              once, read-only and unauthenticated, to keep the links pointed at the
-              newest release. Nothing is sent beyond the request itself, and if it
-              fails the buttons fall back to a pinned release URL.
-            </p>
-          </section>
+        <section class="legal-sec" id="children">
+          <span class="sec-num">05</span>
+          <h2>Children's privacy <a href="#children">#</a></h2>
+          <p>Because Cleaner collects no data from anyone, it inherently collects no data from children.</p>
+        </section>
 
-          <section class="legal-sec glass reveal" id="third-party">
-            <h2><span class="num">04</span>Third-party services<a class="anchor" href="#third-party" aria-label="Link to this section">#</a></h2>
-            <p>
-              Links on this site point to services operated by third parties with
-              their own privacy policies:
-            </p>
-            <ul>
-              <li><strong>GitHub</strong> (github.com) &mdash; source hosting, releases, and issue tracking.</li>
-              <li><strong>Ko-fi</strong> (ko-fi.com) &mdash; optional donations.</li>
-            </ul>
-            <p>
-              If you visit those services, their own policies apply. Cleaner and
-              this website receive no data back from them.
-            </p>
-          </section>
+        <section class="legal-sec" id="changes">
+          <span class="sec-num">06</span>
+          <h2>Changes to this policy <a href="#changes">#</a></h2>
+          <p>If this policy ever changes, the updated version will be posted on
+            this page and in the repository. Given the app's zero-network
+            design, we don't expect it to change much.</p>
+        </section>
 
-          <section class="legal-sec glass reveal" id="children">
-            <h2><span class="num">05</span>Children's privacy<a class="anchor" href="#children" aria-label="Link to this section">#</a></h2>
-            <p>
-              Because Cleaner collects no data from anyone, it inherently collects
-              no data from children.
-            </p>
-          </section>
+        <section class="legal-sec" id="contact">
+          <span class="sec-num">07</span>
+          <h2>Contact <a href="#contact">#</a></h2>
+          <p>Questions about this policy? Open an issue on
+            <a href="https://github.com/w0wzahh/cleaner/issues" target="_blank" rel="noopener">GitHub</a>.</p>
+        </section>
 
-          <section class="legal-sec glass reveal" id="changes">
-            <h2><span class="num">06</span>Changes to this policy<a class="anchor" href="#changes" aria-label="Link to this section">#</a></h2>
-            <p>
-              If this policy ever changes, the updated version will be posted on
-              this page and in the repository. Given the app's zero-network design,
-              we don't expect it to change much.
-            </p>
-          </section>
-
-          <section class="legal-sec glass reveal" id="contact">
-            <h2><span class="num">07</span>Contact<a class="anchor" href="#contact" aria-label="Link to this section">#</a></h2>
-            <p>
-              Questions about this policy? Open an issue on
-              <a href="https://github.com/w0wzahh/cleaner/issues" target="_blank" rel="noopener">GitHub</a>.
-            </p>
-          </section>
-
-          <div class="legal-foot reveal">
-            <a href="license.html">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-              MIT License
-            </a>
-            <a href="terms.html" class="next">
-              Terms of Use
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-            </a>
-          </div>
+        <div class="legal-foot">
+          <a href="license.html"><small>Previous</small>&larr; MIT License</a>
+          <a href="terms.html" class="next"><small>Next</small>Terms &amp; Disclaimer &rarr;</a>
         </div>
       </div>
-    </section>
+    </div>
   </main>
 
   <footer class="footer">
-    <div class="container">
-      <div class="footer-grid">
-        <div class="footer-brand">
-          <img src="assets/icon.png" alt="Cleaner logo" width="34" height="34" />
-          <p>A fast, safe system cleaner for Windows, written in Rust. Open source under the MIT License.</p>
-        </div>
-        <div>
-          <h4>Product</h4>
-          <ul>
-            <li><a href="features.html">Features</a></li>
-
-            <li><a href="docs.html">Documentation</a></li>
-            <li><a href="https://github.com/w0wzahh/cleaner/releases" target="_blank" rel="noopener">Releases</a></li>
-          </ul>
-        </div>
-        <div>
-          <h4>Legal</h4>
-          <ul>
-            <li><a href="license.html">MIT License</a></li>
-            <li><a href="privacy.html">Privacy Policy</a></li>
-            <li><a href="terms.html">Terms &amp; Disclaimer</a></li>
-          </ul>
-        </div>
-        <div>
-          <h4>Community</h4>
-          <ul>
-            <li><a href="https://github.com/w0wzahh/cleaner" target="_blank" rel="noopener">GitHub</a></li>
-            <li><a href="https://github.com/w0wzahh/cleaner/issues" target="_blank" rel="noopener">Report an issue</a></li>
-            <li><a href="https://ko-fi.com/w0wzahh" target="_blank" rel="noopener">Ko-fi</a></li>
-          </ul>
-        </div>
-      </div>
-      <div class="footer-bottom">
-        <span>&copy; 2026 0xEmre &middot; Licensed under the <a href="license.html">MIT License</a></span>
+    <div class="wrap">
+      <div class="footer-bottom" style="border: 0; padding-top: 0;">
+        <span>&copy; 2026 0xEmre &middot; Licensed under the <a href="license.html">MIT License</a> &middot; Part of <a href="https://w0wzahh.link" target="_blank" rel="noopener">w0wzahh.link</a></span>
         <div class="footer-social">
           <a href="https://github.com/w0wzahh/cleaner" target="_blank" rel="noopener" aria-label="GitHub">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
           </a>
-          <a href="https://ko-fi.com/w0wzahh" target="_blank" rel="noopener" class="kofi" aria-label="Ko-fi">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+          <a href="https://ko-fi.com/w0wzahh" target="_blank" rel="noopener" aria-label="Ko-fi">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
           </a>
         </div>
       </div>

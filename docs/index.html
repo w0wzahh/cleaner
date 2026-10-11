@@ -4,153 +4,239 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Cleaner — Fast, safe system cleaner for Windows</title>
-  <meta name="description" content="Cleaner is a free, open-source system cleaner for Windows written in Rust. Find duplicates, large files, and stale temp data — with dry-run preview and recycle-bin safety by default." />
+  <meta name="description" content="Free, open-source system cleaner for Windows, written in Rust. Find duplicate files, large files, and stale temp data — with a dry-run preview and recycle-bin safety by default." />
   <meta property="og:title" content="Cleaner — Fast, safe system cleaner for Windows" />
-  <meta property="og:description" content="Open-source Windows system cleaner written in Rust. Preview before you delete — nothing is removed until you say so." />
+  <meta property="og:description" content="Free, open-source system cleaner for Windows, written in Rust. Dry-run preview, recycle-bin safety, zero network calls." />
   <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://cleaner.w0wzahh.link/" />
+  <link rel="canonical" href="https://cleaner.w0wzahh.link/" />
   <link rel="icon" href="assets/icon.png" type="image/png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700;800&family=Lexend+Mega:wght@700;800&family=Space+Mono:wght@400;700&family=Caveat:wght@600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
-  <!-- Icons are adapted from Feather Icons (MIT, (c) Cole Bemis)
-       and Simple Icons (CC0). See license.html for attribution. -->
-  <div class="bg-scene" aria-hidden="true">
-    <div class="blob blob-1"></div>
-    <div class="blob blob-2"></div>
-    <div class="blob blob-3"></div>
-    <div class="bg-grid"></div>
-  </div>
+  <div id="progressbar" aria-hidden="true"></div>
 
-  <nav class="nav">
-    <div class="nav-inner">
-      <a href="index.html" class="brand">
-        <img src="assets/icon.png" alt="Cleaner logo" width="30" height="30" />
-        Cleaner
-      </a>
+  <nav class="navbar">
+    <div class="navbar-inner">
+      <span class="logo-wrap"><a class="logo" href="index.html"><img src="assets/icon.png" alt="" width="20" height="20" />CLEANER<span class="tld">.</span></a></span>
       <ul class="nav-links" id="nav-links">
-        <li><a href="index.html">Home</a></li>
-        <li><a href="features.html">Features</a></li>
-
-        <li><a href="docs.html">Docs</a></li>
-        <li><a href="license.html">License</a></li>
-        <li class="nav-sep" aria-hidden="true"></li>
-        <li class="nav-ext"><a href="https://github.com/w0wzahh/cleaner" target="_blank" rel="noopener">GitHub</a></li>
-        <li class="nav-ext"><a href="https://ko-fi.com/w0wzahh" target="_blank" rel="noopener">Ko-fi</a></li>
+        <li><a class="nav-pill" href="index.html">Home</a></li>
+        <li><a class="nav-pill" href="features.html">Features</a></li>
+        <li><a class="nav-pill" href="docs.html">Docs</a></li>
+        <li><a class="nav-pill" href="license.html">License</a></li>
+        <li><a class="nav-pill ext" href="https://github.com/w0wzahh/cleaner" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+          GitHub</a></li>
+        <li><a class="nav-pill ext" href="https://ko-fi.com/w0wzahh" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+          Ko-fi</a></li>
       </ul>
-      <div class="nav-actions">
-        <a class="btn btn-ghost btn-sm" href="https://github.com/w0wzahh/cleaner" target="_blank" rel="noopener">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
-          GitHub
-        </a>
-        <a class="btn btn-kofi btn-sm" href="https://ko-fi.com/w0wzahh" target="_blank" rel="noopener">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
-          Ko-fi
-        </a>
-      </div>
-      <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-      </button>
+      <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false">≡</button>
     </div>
   </nav>
 
   <main>
-    <section class="hero container">
-      <div class="hero-copy">
-        <span class="hero-badge reveal">
-          <span class="dot"></span>
-          Open Source &middot; MIT Licensed &middot; <span data-rel-version>v2.12.3</span>
-        </span>
-        <h1 class="reveal reveal-d1">
-          Reclaim your disk space.<br />
-          <span class="grad-text">Safely.</span>
-        </h1>
-        <p class="hero-sub reveal reveal-d2">
-          Cleaner digs through your folders and the usual junk spots on Windows
-          &mdash; duplicates, huge files, stale temp data, empty folders &mdash; and shows
-          you exactly what's wasting space <em>before</em> it deletes anything.
-        </p>
-        <div class="hero-cta reveal reveal-d3">
-          <a href="https://github.com/w0wzahh/cleaner/releases/download/v2.12.3/Cleaner-Setup-2.12.3.exe" data-dl="installer" class="btn btn-primary btn-lg" download>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Download for Windows
-          </a>
-          <a href="https://github.com/w0wzahh/cleaner/releases/download/v2.12.3/cleaner-v2.12.3-windows-x64.zip" data-dl="portable" class="btn btn-glass btn-lg" download>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-            Portable install
-          </a>
+    <!-- ============================== HERO ============================== -->
+    <div class="wrap">
+      <div class="hero-split">
+        <div>
+          <span class="chip"><span class="dot"></span>Open Source · MIT · <b data-rel-version>v2.12.3</b></span>
+          <h1>Reclaim your disk space. <span class="fill">Safely.</span></h1>
+          <p class="lede">
+            Cleaner digs through your folders and the usual junk spots on
+            Windows — duplicates, huge files, stale temp data, empty
+            folders — and shows you exactly what's wasting space
+            <i>before</i> it deletes anything.
+          </p>
+          <div class="cta-row">
+            <a class="btn btn-primary" data-dl="installer" href="https://github.com/w0wzahh/cleaner/releases/download/v2.12.3/Cleaner-Setup-2.12.3.exe">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Download for Windows
+            </a>
+            <a class="btn" data-dl="portable" href="https://github.com/w0wzahh/cleaner/releases/download/v2.12.3/cleaner-v2.12.3-windows-x64.zip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+              Portable .zip
+            </a>
+          </div>
+          <div class="sub-links">
+            <a class="btn btn-sm" href="https://github.com/w0wzahh/cleaner" target="_blank" rel="noopener">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+              Source code
+            </a>
+            <a class="btn btn-sm" href="features.html">Explore features →</a>
+          </div>
+          <div class="safety-line">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            Dry-run by default · Recycle bin by default · Zero network calls
+          </div>
         </div>
-        <div class="hero-cta hero-cta-sub reveal reveal-d4">
-          <a href="https://github.com/w0wzahh/cleaner" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
-            Source code
-          </a>
-          <a href="features.html" class="btn btn-ghost btn-sm">
-            Explore features
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-          </a>
-        </div>
-        <div class="hero-note reveal reveal-d5">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-          Dry-run by default &middot; Recycle bin by default &middot; Zero network calls
-        </div>
-      </div>
 
-      <div class="hero-visual reveal reveal-d2">
-        <div class="app-window" aria-hidden="true">
-          <div class="aw-titlebar">
-            <span class="aw-dot r"></span>
-            <span class="aw-dot y"></span>
-            <span class="aw-dot g"></span>
-            <span class="aw-title">Cleaner &mdash; Dashboard</span>
-          </div>
-          <div class="aw-body">
-            <div class="aw-side">
-              <span class="aw-side-item on"></span>
-              <span class="aw-side-item"></span>
-              <span class="aw-side-item"></span>
-              <span class="aw-side-item"></span>
-              <span class="aw-side-item"></span>
-              <span class="aw-side-item"></span>
+        <div class="hero-visual" aria-hidden="true">
+          <span class="sticker s1">// 0 network calls</span>
+          <span class="sticker s2">written in rust 🦀</span>
+          <div class="app-window">
+            <div class="aw-titlebar">
+              <span class="aw-dot"></span><span class="aw-dot"></span><span class="aw-dot"></span>
+              <span class="aw-title">Cleaner — Dashboard</span>
             </div>
-            <div class="aw-main">
-              <div class="aw-chips">
-                <span class="aw-chip"></span>
-                <span class="aw-chip"></span>
-                <span class="aw-chip"></span>
+            <div class="aw-body">
+              <div class="aw-side">
+                <span class="aw-nav-item on"></span>
+                <span class="aw-nav-item"></span>
+                <span class="aw-nav-item"></span>
+                <span class="aw-nav-item dim"></span>
+                <span class="aw-nav-item dim"></span>
+                <span class="aw-nav-item dim"></span>
               </div>
-              <div class="aw-bars">
-                <div class="aw-bar-row"><span class="aw-bar-label"></span><span class="aw-bar"></span></div>
-                <div class="aw-bar-row"><span class="aw-bar-label"></span><span class="aw-bar"></span></div>
-                <div class="aw-bar-row"><span class="aw-bar-label"></span><span class="aw-bar"></span></div>
-                <div class="aw-bar-row"><span class="aw-bar-label"></span><span class="aw-bar"></span></div>
-                <div class="aw-bar-row"><span class="aw-bar-label"></span><span class="aw-bar"></span></div>
-              </div>
-              <div class="aw-footer">
-                <span class="aw-btn"></span>
-                <span class="aw-btn primary"></span>
+              <div class="aw-main">
+                <div class="aw-chips">
+                  <span class="aw-chip"></span><span class="aw-chip"></span><span class="aw-chip"></span>
+                </div>
+                <div class="aw-bars">
+                  <div class="aw-bar-row"><span class="aw-bar-label"></span><span class="aw-bar"></span></div>
+                  <div class="aw-bar-row"><span class="aw-bar-label"></span><span class="aw-bar"></span></div>
+                  <div class="aw-bar-row"><span class="aw-bar-label"></span><span class="aw-bar"></span></div>
+                  <div class="aw-bar-row"><span class="aw-bar-label"></span><span class="aw-bar"></span></div>
+                  <div class="aw-bar-row"><span class="aw-bar-label"></span><span class="aw-bar"></span></div>
+                </div>
+                <div class="aw-footer">
+                  <span class="aw-btn"></span>
+                  <span class="aw-btn primary"></span>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- ============================== MARQUEE ============================== -->
+    <div class="marquee" aria-hidden="true">
+      <div class="marquee-track">
+        <span>Rust-powered <i>✦</i></span><span>Dry-run by default <i>✦</i></span><span>Recycle bin first <i>✦</i></span><span>Zero network calls <i>✦</i></span><span>BLAKE3 + xxh3 hashing <i>✦</i></span><span>CLI &amp; Task Scheduler <i>✦</i></span><span>Single native binary <i>✦</i></span><span>MIT licensed <i>✦</i></span>
+        <span>Rust-powered <i>✦</i></span><span>Dry-run by default <i>✦</i></span><span>Recycle bin first <i>✦</i></span><span>Zero network calls <i>✦</i></span><span>BLAKE3 + xxh3 hashing <i>✦</i></span><span>CLI &amp; Task Scheduler <i>✦</i></span><span>Single native binary <i>✦</i></span><span>MIT licensed <i>✦</i></span>
+      </div>
+    </div>
+
+    <!-- ============================== STATS ============================== -->
+    <section class="wrap" style="padding-top: 64px; padding-bottom: 20px;">
+      <div class="stat-grid">
+        <div class="stat c1"><div class="num">&lt;1<em>s</em></div><div class="lbl">12,000-file duplicate scan</div></div>
+        <div class="stat c2"><div class="num">7</div><div class="lbl">Focused cleaning tools</div></div>
+        <div class="stat c3"><div class="num">0</div><div class="lbl">Network calls, ever</div></div>
+        <div class="stat c4"><div class="num">6</div><div class="lbl">Animated themes</div></div>
+      </div>
+    </section>
+
+    <!-- ============================== FEATURES PREVIEW ============================== -->
+    <section class="wrap">
+      <div class="sec-head">
+        <span class="sec-kicker">The toolkit</span>
+        <h2>Find the junk, wherever it hides</h2>
+        <p>Seven focused tools — no bundled nonsense, no "registry optimizer" scare tactics. Each one previews before it touches a byte.</p>
+      </div>
+      <div class="card-grid">
+        <div class="card">
+          <span class="tape tl"></span>
+          <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></span>
+          <h3>Custom Clean</h3>
+          <p>Point it at any folder and filter by extension, glob pattern, age, or size. Recursive and hidden-file toggles included.</p>
+        </div>
+        <div class="card">
+          <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span>
+          <h3>Duplicate Finder</h3>
+          <p>xxh3 fingerprints first, full BLAKE3 only when it has to — parallel across every CPU core.</p>
+        </div>
+        <div class="card">
+          <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="12" x2="2" y2="12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" y1="16" x2="6.01" y2="16"/><line x1="10" y1="16" x2="10.01" y2="16"/></svg></span>
+          <h3>System Cleaner</h3>
+          <p>Temp folders, app caches, browser caches, and the thumbnail cache. Pick your targets — or add your own.</p>
+        </div>
+        <div class="card">
+          <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>
+          <h3>Large File Finder</h3>
+          <p>Everything above a size you pick, sorted biggest first, with one-click reveal in Explorer.</p>
+        </div>
+        <div class="card">
+          <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
+          <h3>Empty Folder Cleaner</h3>
+          <p>Finds empty directories — including ones that only become empty once their children are removed.</p>
+        </div>
+        <div class="card">
+          <span class="tape br"></span>
+          <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></span>
+          <h3>Storage Overview</h3>
+          <p>Ranks a folder's subfolders by total size, plus per-drive usage bars so you see where the space went.</p>
+        </div>
+      </div>
+      <div class="cta-row" style="margin-top: 34px; animation: none; opacity: 1; transform: none;">
+        <a class="btn" href="features.html">All 12 features →</a>
+      </div>
+    </section>
+
+    <!-- ============================== SAFETY ============================== -->
+    <section class="wrap">
+      <div class="panel dark">
+        <span class="sec-kicker">Safety model</span>
+        <h2 style="font-size: clamp(1.7rem, 3.5vw, 2.6rem); text-transform: uppercase; margin: 14px 0 8px;">A deletion tool you can trust</h2>
+        <p>Cleaner deletes files — so every default is tuned to make the destructive path the deliberate one.</p>
+        <div class="safety-grid">
+          <div class="safety-item"><h3>dry_run</h3><p>On out of the box. Nothing is deleted until you turn it off.</p></div>
+          <div class="safety-item"><h3>use_trash</h3><p>Deletions go to the recycle bin by default; permanent delete is opt-in.</p></div>
+          <div class="safety-item"><h3>confirm_clean</h3><p>Every clean asks for confirmation first — even from the CLI.</p></div>
+          <div class="safety-item"><h3>secure_delete</h3><p>Optional 3-pass overwrite for files you really want gone.</p></div>
+          <div class="safety-item"><h3>protected_paths</h3><p>A list that's never scanned or deleted. Period.</p></div>
+          <div class="safety-item"><h3>history log</h3><p>A persistent log records every scan and clean operation.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================== DOWNLOAD ============================== -->
+    <section class="wrap" id="download">
+      <div class="sec-head">
+        <span class="sec-kicker">Download</span>
+        <h2>Grab it. It's free.</h2>
+        <p>Windows 10 or newer, 64-bit. No runtime dependencies — it's a single native Rust binary.</p>
+      </div>
+      <div class="dl-grid">
+        <div class="dl-card hero-card">
+          <span class="dl-tag">Recommended</span>
+          <h3>Installer</h3>
+          <p>Per-user install with no admin prompt. Adds a Start Menu shortcut and a proper uninstaller that can remove every trace.</p>
+          <div class="dl-meta"><span>.exe</span><span>no admin needed</span><span>start menu entry</span></div>
+          <a class="btn btn-dark" data-dl="installer" href="https://github.com/w0wzahh/cleaner/releases/download/v2.12.3/Cleaner-Setup-2.12.3.exe">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Cleaner-Setup.exe
+          </a>
+        </div>
+        <div class="dl-card">
+          <h3>Portable</h3>
+          <p>Unzip anywhere — a folder, a USB stick — and run <code class="inline">cleaner.exe</code>. Settings and logs stay next to the exe.</p>
+          <div class="dl-meta"><span>.zip</span><span>runs from usb</span><span>nothing installed</span></div>
+          <a class="btn" data-dl="portable" href="https://github.com/w0wzahh/cleaner/releases/download/v2.12.3/cleaner-v2.12.3-windows-x64.zip">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+            cleaner-windows-x64.zip
+          </a>
+        </div>
+      </div>
+      <p class="dl-note">Buttons auto-update to the latest release — every build lives on the <a href="https://github.com/w0wzahh/cleaner/releases" target="_blank" rel="noopener">Releases page</a>.</p>
     </section>
   </main>
 
   <footer class="footer">
-    <div class="container">
+    <div class="wrap">
       <div class="footer-grid">
         <div class="footer-brand">
-          <img src="assets/icon.png" alt="Cleaner logo" width="34" height="34" />
-          <p>
-            A fast, safe system cleaner for Windows, written in Rust.
-            Open source under the MIT License.
-          </p>
+          <img src="assets/icon.png" alt="Cleaner logo" width="40" height="40" />
+          <p>A fast, safe system cleaner for Windows, written in Rust. Open source under the MIT License.</p>
         </div>
         <div>
           <h4>Product</h4>
           <ul>
             <li><a href="features.html">Features</a></li>
-
             <li><a href="docs.html">Documentation</a></li>
             <li><a href="https://github.com/w0wzahh/cleaner/releases" target="_blank" rel="noopener">Releases</a></li>
           </ul>
@@ -173,13 +259,13 @@
         </div>
       </div>
       <div class="footer-bottom">
-        <span>&copy; 2026 0xEmre &middot; Licensed under the <a href="license.html">MIT License</a></span>
+        <span>&copy; 2026 0xEmre &middot; Licensed under the <a href="license.html">MIT License</a> &middot; Part of <a href="https://w0wzahh.link" target="_blank" rel="noopener">w0wzahh.link</a></span>
         <div class="footer-social">
           <a href="https://github.com/w0wzahh/cleaner" target="_blank" rel="noopener" aria-label="GitHub">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
           </a>
-          <a href="https://ko-fi.com/w0wzahh" target="_blank" rel="noopener" class="kofi" aria-label="Ko-fi">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+          <a href="https://ko-fi.com/w0wzahh" target="_blank" rel="noopener" aria-label="Ko-fi">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
           </a>
         </div>
       </div>

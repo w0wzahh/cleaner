@@ -5,62 +5,48 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Documentation — Cleaner</title>
   <meta name="description" content="Cleaner documentation: quick start, safety model, command-line reference, settings, and data file locations." />
+  <link rel="canonical" href="https://cleaner.w0wzahh.link/docs.html" />
   <link rel="icon" href="assets/icon.png" type="image/png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700;800&family=Lexend+Mega:wght@700;800&family=Space+Mono:wght@400;700&family=Caveat:wght@600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
-  <div class="bg-scene" aria-hidden="true">
-    <div class="blob blob-1"></div>
-    <div class="blob blob-2"></div>
-    <div class="blob blob-3"></div>
-    <div class="bg-grid"></div>
-  </div>
+  <div id="progressbar" aria-hidden="true"></div>
 
-  <nav class="nav">
-    <div class="nav-inner">
-      <a href="index.html" class="brand">
-        <img src="assets/icon.png" alt="Cleaner logo" width="30" height="30" />
-        Cleaner
-      </a>
+  <nav class="navbar">
+    <div class="navbar-inner">
+      <span class="logo-wrap"><a class="logo" href="index.html"><img src="assets/icon.png" alt="" width="20" height="20" />CLEANER<span class="tld">.</span></a></span>
       <ul class="nav-links" id="nav-links">
-        <li><a href="index.html">Home</a></li>
-        <li><a href="features.html">Features</a></li>
-
-        <li><a href="docs.html">Docs</a></li>
-        <li><a href="license.html">License</a></li>
-        <li class="nav-sep" aria-hidden="true"></li>
-        <li class="nav-ext"><a href="https://github.com/w0wzahh/cleaner" target="_blank" rel="noopener">GitHub</a></li>
-        <li class="nav-ext"><a href="https://ko-fi.com/w0wzahh" target="_blank" rel="noopener">Ko-fi</a></li>
+        <li><a class="nav-pill" href="index.html">Home</a></li>
+        <li><a class="nav-pill" href="features.html">Features</a></li>
+        <li><a class="nav-pill" href="docs.html">Docs</a></li>
+        <li><a class="nav-pill" href="license.html">License</a></li>
+        <li><a class="nav-pill ext" href="https://github.com/w0wzahh/cleaner" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+          GitHub</a></li>
+        <li><a class="nav-pill ext" href="https://ko-fi.com/w0wzahh" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+          Ko-fi</a></li>
       </ul>
-      <div class="nav-actions">
-        <a class="btn btn-ghost btn-sm" href="https://github.com/w0wzahh/cleaner" target="_blank" rel="noopener">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
-          GitHub
-        </a>
-        <a class="btn btn-kofi btn-sm" href="https://ko-fi.com/w0wzahh" target="_blank" rel="noopener">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
-          Ko-fi
-        </a>
-      </div>
-      <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-      </button>
+      <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false">≡</button>
     </div>
   </nav>
 
   <main>
-    <section class="page-hero container">
-      <span class="hero-badge reveal"><span class="dot"></span>Documentation</span>
-      <h1 class="reveal reveal-d1">Using <span class="grad-text">Cleaner</span></h1>
-      <p class="reveal reveal-d2">
+    <div class="wrap page-hero">
+      <span class="chip"><span class="dot"></span>Documentation</span>
+      <h1>Using <span class="fill">Cleaner</span></h1>
+      <p>
         Quick start, the safety model, the full CLI reference, and where your
         data files live. For release notes see the
         <a href="https://github.com/w0wzahh/cleaner/blob/master/CHANGELOG.md" target="_blank" rel="noopener">changelog</a>.
       </p>
-    </section>
+    </div>
 
-    <div class="container docs-layout section-sm">
-      <aside class="docs-toc glass reveal">
+    <div class="wrap docs-layout">
+      <aside class="docs-toc">
         <h4>On this page</h4>
         <ul>
           <li><a href="#quickstart">Quick start</a></li>
@@ -133,7 +119,7 @@
             <li>A <strong>persistent log</strong> records every operation.</li>
           </ul>
           <div class="callout warn">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
             <div>
               Permanent delete and secure erase are irreversible. Review the
               preview list carefully before confirming a clean.
@@ -199,7 +185,7 @@
             </table>
           </div>
           <div class="callout info">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
             <div>
               Clean commands honor your saved settings &mdash; if dry run is enabled
               in the app, <code class="inline">clean-*</code> commands only preview
@@ -272,17 +258,16 @@ cargo build --release
   </main>
 
   <footer class="footer">
-    <div class="container">
+    <div class="wrap">
       <div class="footer-grid">
         <div class="footer-brand">
-          <img src="assets/icon.png" alt="Cleaner logo" width="34" height="34" />
+          <img src="assets/icon.png" alt="Cleaner logo" width="40" height="40" />
           <p>A fast, safe system cleaner for Windows, written in Rust. Open source under the MIT License.</p>
         </div>
         <div>
           <h4>Product</h4>
           <ul>
             <li><a href="features.html">Features</a></li>
-
             <li><a href="docs.html">Documentation</a></li>
             <li><a href="https://github.com/w0wzahh/cleaner/releases" target="_blank" rel="noopener">Releases</a></li>
           </ul>
@@ -305,13 +290,13 @@ cargo build --release
         </div>
       </div>
       <div class="footer-bottom">
-        <span>&copy; 2026 0xEmre &middot; Licensed under the <a href="license.html">MIT License</a></span>
+        <span>&copy; 2026 0xEmre &middot; Licensed under the <a href="license.html">MIT License</a> &middot; Part of <a href="https://w0wzahh.link" target="_blank" rel="noopener">w0wzahh.link</a></span>
         <div class="footer-social">
           <a href="https://github.com/w0wzahh/cleaner" target="_blank" rel="noopener" aria-label="GitHub">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
           </a>
-          <a href="https://ko-fi.com/w0wzahh" target="_blank" rel="noopener" class="kofi" aria-label="Ko-fi">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+          <a href="https://ko-fi.com/w0wzahh" target="_blank" rel="noopener" aria-label="Ko-fi">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
           </a>
         </div>
       </div>
