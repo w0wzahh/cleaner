@@ -7,16 +7,21 @@
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const fine = matchMedia("(pointer: fine)").matches;
 
-  /* ---------- custom neobrutal cursor — same arrow as w0wzahh.link ---------- */
+  /* ---------- custom neobrutal cursor — identical to w0wzahh.link:
+     white arrow + black offset shadow, turns yellow + tilts -14deg over
+     interactive elements, squashes on click. The outer div only tracks the
+     pointer; an inner wrapper carries the scale/rotate so the transform
+     origin stays pinned at the arrow tip and the hotspot never drifts. -- */
 
   if (fine && !reduced) {
     const cur = document.createElement("div");
     cur.id = "cursor";
     cur.innerHTML =
+      '<div class="cursor-arrow">' +
       '<svg width="30" height="34" viewBox="0 0 30 34">' +
       '<path d="M7 5 L23 18 L16.8 19.2 L20.2 27.8 L16.9 29.2 L13.4 20.8 L7 25 Z" transform="translate(2.5 2.5)" fill="#000"/>' +
       '<path class="arrow" d="M7 5 L23 18 L16.8 19.2 L20.2 27.8 L16.9 29.2 L13.4 20.8 L7 25 Z" stroke="#000" stroke-width="2.5" stroke-linejoin="round"/>' +
-      "</svg>";
+      "</svg></div>";
     document.body.appendChild(cur);
     document.body.classList.add("has-cursor");
 
@@ -25,16 +30,16 @@
     addEventListener("pointerover", (e) => {
       cur.classList.toggle(
         "hover",
-        !!e.target.closest?.("a, button, [role='button'], input, textarea, select, label")
+        !!e.target.closest?.("a, button, [role='button'], input, textarea, select, label, [data-cursor]")
       );
     });
     addEventListener("pointerdown", () => cur.classList.add("down"));
     addEventListener("pointerup", () => cur.classList.remove("down"));
 
     (function follow() {
-      cx += (tx - cx) * 0.24;
-      cy += (ty - cy) * 0.24;
-      cur.style.transform = `translate(${cx - 7}px, ${cy - 5}px)`;
+      cx += (tx - cx) * 0.3;
+      cy += (ty - cy) * 0.3;
+      cur.style.transform = `translate(${cx}px, ${cy}px)`;
       requestAnimationFrame(follow);
     })();
   }

@@ -69,18 +69,22 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; }
   transform-origin: 0 50%; transform: scaleX(0);
 }
 
-/* custom cursor — transform-origin pinned at the arrow tip (7,5 in the
-   SVG) so hover/down scaling never shifts the hotspot */
+/* custom cursor — same as w0wzahh.link: white arrow → yellow + tilt on
+   hover, squash on click. .cursor-arrow carries scale/rotate around the
+   arrow tip (8,6 after its -1,-1 offset) so the hotspot stays planted. */
 #cursor {
   position: fixed; top: 0; left: 0; z-index: 9999;
   pointer-events: none;
-  transform-origin: 7px 5px;
-  transition: scale .12s ease;
 }
-#cursor .arrow { fill: var(--main); }
-#cursor.hover { scale: 1.25; }
-#cursor.hover .arrow { fill: var(--chart-3); }
-#cursor.down { scale: .82; }
+.cursor-arrow {
+  transform: translate(-1px, -1px);
+  transform-origin: 8px 6px;
+  transition: transform .14s cubic-bezier(.2, .8, .3, 1);
+}
+#cursor .arrow { fill: #fff; transition: fill .12s ease; }
+#cursor.hover .cursor-arrow { transform: translate(-1px, -1px) scale(1.3) rotate(-14deg); }
+#cursor.hover .arrow { fill: var(--main); }
+#cursor.down .cursor-arrow { transform: translate(-1px, -1px) scale(.78) rotate(-14deg); }
 body.has-cursor, body.has-cursor * { cursor: none !important; }
 
 /* Interactive elements translate 4px on hover — without a stable hitbox the
@@ -141,7 +145,9 @@ body.has-cursor, body.has-cursor * { cursor: none !important; }
 }
 .nav-toggle:hover { transform: translate(4px, 4px); box-shadow: 0 0 0 var(--ink); }
 
-.wrap { max-width: 1440px; margin: 0 auto; padding: 0 24px; }
+/* horizontal-only padding — using the shorthand here would clobber the
+   vertical padding of <section class="wrap"> elements site-wide */
+.wrap { max-width: 1440px; margin: 0 auto; padding-left: 24px; padding-right: 24px; }
 
 /* ---------- buttons ---------- */
 .btn {
@@ -296,7 +302,7 @@ h1 .fill {
 .marquee-track i { font-style: normal; color: var(--chart-3); }
 
 /* ---------- sections ---------- */
-section { padding: 84px 0; }
+section { padding: 60px 0; }
 .sec-head { margin-bottom: 40px; }
 .sec-kicker {
   display: inline-block;
